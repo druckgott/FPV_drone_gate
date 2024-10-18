@@ -22,6 +22,7 @@ const float distance_cm = 150.0; // Setze den gewünschten Abstand in cm
 // NeoPixel Konfiguration
 #define NUM_LEDS 300
 #define LED_PIN 2          // Pin für die NeoPixel-LEDs (GPIO2, D4)
+#define BRIGHTNESS 60 // Helligkeit als Konstante definieren
 
 // Tiefpassfilter-Konfiguration
 #define LOW_PASS_FILTER_FREQ 60  // Frequenz des Tiefpassfilters in Hz (15 bis 100 Hz)
@@ -132,9 +133,26 @@ void scanForDrones(float distance_cm) {
         // Farbe der nächstgelegenen Drohne auf den NeoPixel setzen
         int closestIndex = closestDrone.substring(closestDrone.indexOf('_') + 1).toInt() - 1; // Drohne Nummer aus SSID extrahieren
         if (closestIndex >= 0 && closestIndex < 10) {
-            for (int i = 0; i < NUM_LEDS; i++) {
-                strip.setPixelColor(i, droneColors[closestIndex]);
+            // LEDs basierend auf dem RSSI-Wert steuern
+            int ledCount = 0; // Anzahl der leuchtenden LEDs festlegen
+            if (closestRSSI >= 0) {
+                ledCount = NUM_LEDS; // Alle LEDs leuchten
+            } else if (closestRSSI <= -100) {
+                ledCount = NUM_LEDS / 2; // 50% der LEDs leuchten
+            } else {
+                // Interpolation zwischen 0 und -100 für die LED-Anzahl
+                ledCount = map(closestRSSI, -100, 0, NUM_LEDS / 2, NUM_LEDS);
             }
+
+            // Setze die Farbe für die LEDs
+            for (int i = 0; i < NUM_LEDS; i++) {
+                if (i < ledCount) {
+                    strip.setPixelColor(i, droneColors[closestIndex]); // Farbe für die aktive Drohne
+                } else {
+                    strip.setPixelColor(i, strip.Color(0, 0, 0)); // LEDs ausschalten
+                }
+            }
+            strip.setBrightness(BRIGHTNESS);
             strip.show(); // Aktualisiere die LEDs
         }
     }
@@ -228,7 +246,7 @@ void setup() {
     Serial.println("WiFi AP gestartet.");
 
     strip.begin(); // NeoPixel initialisieren
-    strip.setBrightness(30);
+    strip.setBrightness(BRIGHTNESS);
     strip.show(); // Sicherstellen, dass die LEDs zu Beginn ausgeschaltet sind
 
     server.on("/", handleRoot); // Root-Handler
