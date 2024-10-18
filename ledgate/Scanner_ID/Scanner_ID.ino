@@ -2,6 +2,7 @@
 #include <ESP8266WebServer.h>
 #include <math.h>  // Für die Logarithmus-Berechnung
 #include <ArduinoJson.h> // Für JSON Verarbeitung
+#include <Adafruit_NeoPixel.h> // NeoPixel Bibliothek
 
 // Konfigurationsparameter
 unsigned long previousMillis = 0; // speichert die Zeit des letzten Scans
@@ -18,11 +19,17 @@ const char* password = "12345678"; // WiFi Passwort
 // Abstand in Zentimetern (konfigurierbar)
 const float distance_cm = 150.0; // Setze den gewünschten Abstand in cm
 
+// NeoPixel Konfiguration
+#define NUM_LEDS 300
+#define LED_PIN 2          // Pin für die NeoPixel-LEDs (GPIO2, D4)
+
 // Tiefpassfilter-Konfiguration
-#define LOW_PASS_FILTER_FREQ 20  // Frequenz des Tiefpassfilters in Hz (15 bis 100 Hz)
+#define LOW_PASS_FILTER_FREQ 60  // Frequenz des Tiefpassfilters in Hz (15 bis 100 Hz)
 const float dt = scanInterval / 1000.0; // Zeitintervall in Sekunden
 float alpha = 0; // Filterfaktor
 float lastFilteredRSSI = 0; // Letzter gefilterter RSSI-Wert
+
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // Webserver auf Port 80
 ESP8266WebServer server(80);
@@ -31,6 +38,20 @@ ESP8266WebServer server(80);
 String closestDrone = "";
 long closestRSSI = LONG_MIN;
 StaticJsonDocument<1024> droneData;
+
+// Farben für jede Drohne
+const uint32_t droneColors[] = {
+    0xFF0000, // Drone_01: Rot
+    0xFFFF00, // Drone_02: Gelb
+    0x00FF00, // Drone_03: Grün
+    0x0000FF, // Drone_04: Blau
+    0xFF00FF, // Drone_05: Magenta
+    0x00FFFF, // Drone_06: Cyan
+    0xFFA500, // Drone_07: Orange
+    0x800080, // Drone_08: Lila
+    0xFFFFFF, // Drone_09: Weiß
+    0x808080  // Drone_10: Grau
+};
 
 // Funktion zur Berechnung des Tiefpassfilters
 float lowPassFilter(float newValue) {
@@ -107,6 +128,15 @@ void scanForDrones(float distance_cm) {
         // JSON-Daten aktualisieren
         droneData["closest"]["ssid"] = closestDrone;
         droneData["closest"]["rssi"] = closestRSSI;
+
+        // Farbe der nächstgelegenen Drohne auf den NeoPixel setzen
+        int closestIndex = closestDrone.substring(closestDrone.indexOf('_') + 1).toInt() - 1; // Drohne Nummer aus SSID extrahieren
+        if (closestIndex >= 0 && closestIndex < 10) {
+            for (int i = 0; i < NUM_LEDS; i++) {
+                strip.setPixelColor(i, droneColors[closestIndex]);
+            }
+            strip.show(); // Aktualisiere die LEDs
+        }
     }
 
     // Leeren des Scanergebnisses
@@ -174,44 +204,45 @@ void handleRoot() {
     <body>
       <h1>Drohnen Scanner</h1>
       <table>
-        <tr>
-          <th>Drohne</th>
-          <th>RSSI</th>
-        </tr>
+        <thead>
+          <tr>
+            <th>SSID</th>
+            <th>RSSI</th>
+          </tr>
+        </thead>
         <tbody id="drone-list">
-          <tr><td>Lade...</td><td>Lade...</td></tr>
         </tbody>
       </table>
     </body>
     </html>
-  )=====";
+    )=====";
+
     server.send(200, "text/html", html);
 }
 
+// Setup-Funktion
 void setup() {
-    Serial.begin(115200);  // Serielle Kommunikation starten
-    WiFi.mode(WIFI_AP);    // Den ESP8266 in den Access Point-Modus versetzen
-    WiFi.softAP(ssid, password); // Access Point starten
+    Serial.begin(115200);
+    WiFi.mode(WIFI_AP); // AP-Mode aktivieren
+    WiFi.softAP(ssid, password); // SSID und Passwort setzen
+    Serial.println("WiFi AP gestartet.");
 
-    // Webserver Routen definieren
-    server.on("/", handleRoot);            // Route für die Webseite
-    server.on("/droneData", handleDroneData); // Route für die JSON-Daten
-    server.begin();  // Webserver starten
-    Serial.println("Webserver gestartet!");
+    strip.begin(); // NeoPixel initialisieren
+    strip.setBrightness(30);
+    strip.show(); // Sicherstellen, dass die LEDs zu Beginn ausgeschaltet sind
 
-    WiFi.disconnect();      // Vor dem Scannen sicherstellen, dass keine Verbindung besteht
-    delay(100);            // Kurze Wartezeit
+    server.on("/", handleRoot); // Root-Handler
+    server.on("/droneData", handleDroneData); // JSON-Handler
+    server.begin(); // Webserver starten
+    Serial.println("Webserver gestartet.");
 }
 
+// Loop-Funktion
 void loop() {
-    server.handleClient(); // Webserver Anfragen verarbeiten
-    unsigned long currentMillis = millis(); // aktuelle Zeit abrufen
-
-    // Überprüfen, ob die Zeit für den nächsten Scan gekommen ist
-    if (currentMillis - previousMillis >= scanInterval) {
-        previousMillis = currentMillis; // Zeitstempel aktualisieren
-
-        // Scannen nach Drohnen
-        scanForDrones(distance_cm); // Scannen mit dem angegebenen Abstand
+    server.handleClient(); // Überprüfen auf eingehende Anfragen
+    elapsedMillis = millis();
+    if (elapsedMillis - previousMillis >= scanInterval) {
+        previousMillis = elapsedMillis;
+        scanForDrones(distance_cm); // Scannen nach Drohnen
     }
 }
