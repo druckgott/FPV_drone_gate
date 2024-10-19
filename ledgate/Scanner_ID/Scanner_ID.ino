@@ -142,6 +142,15 @@ void scanForDrones(float distance_cm) {
                     droneInfo["ssid"] = ssid;
                     droneInfo["rssi"] = filteredRSSI;
                     droneInfo["isClosest"] = (filteredRSSI > calculateRSSIFromDistance(distance_cm)); // Marker für die nächste Drohne
+                    // Extrahiere die Drohnennummer aus der SSID in einer Zeile
+                    int droneNumber = (ssid[7] >= '0' && ssid[7] <= '9') ? ssid[7] - '0' : -1; // Für Drohne_1 bis Drohne_9
+
+                    // Falls die SSID eine zweistellige Zahl hat (Drohne_10)
+                    if (ssid.length() > 8 && strncmp(ssid.c_str(), "Drohne_", 7) == 0 && ssid[8] >= '0' && ssid[8] <= '9') {
+                        droneNumber = (ssid[7] - '0') * 10 + (ssid[8] - '0'); // Konvertiere zu einer Zahl
+                    }
+                    // 1 Abziehen weil die ID bei 1 beginnt, der color array aber bei 0
+                    droneInfo["color"] = droneColors[droneNumber - 1];
                 }
             }
 
@@ -150,7 +159,9 @@ void scanForDrones(float distance_cm) {
             Serial.printf("Anzahl der Drohnen: %zu\n", droneCount); // Ausgabe der Anzahl
             #endif
             if (droneCount == 0) {
+                #if DEBUG
                 Serial.println("Keine Drone_* gefunden.");
+                #endif
                 setAllLEDs(strip.Color(255, 255, 255), 128); // Weiß und 50% Helligkeit
             }
         }
@@ -405,8 +416,10 @@ void handleRoot() {
           border: 1px solid black;
         }
         th, td {
+          border: 1px solid black;
           padding: 15px;
           text-align: left;
+          width: 33.33%; /* Jede Spalte nimmt 1/3 der Gesamtbreite ein */
         }
         .closest {
           background-color: lime;
@@ -429,6 +442,11 @@ void handleRoot() {
         .config-button:hover {
           background-color: #45a049; /* Dunkleres Grün beim Hover */
         }
+        .drone-color {
+          width: 100px;
+          text-align: center;
+          color: white;
+        }
       </style>
       <script>
         function fetchDroneData() {
@@ -440,7 +458,8 @@ void handleRoot() {
               data.drones.sort((a, b) => a.ssid.localeCompare(b.ssid));
               for (let i = 0; i < data.drones.length; i++) {
                 let className = data.drones[i].ssid === data.closest.ssid ? "closest" : "farther";
-                droneTable += "<tr class='" + className + "'><td>" + data.drones[i].ssid + "</td><td>" + data.drones[i].rssi + "</td></tr>";
+                let hexColor = "#" + ("000000" + data.drones[i].color.toString(16)).slice(-6);
+                droneTable += "<tr class='" + className + "'><td>" + data.drones[i].ssid + "</td><td>" + data.drones[i].rssi + "</td><td class='drone-color' style='background-color:" + hexColor + "'>" + hexColor + "</td></tr>";
               }
               document.getElementById("drone-list").innerHTML = droneTable;
             });
@@ -455,6 +474,7 @@ void handleRoot() {
           <tr>
             <th>SSID</th>
             <th>RSSI</th>
+            <th>Farbe</th>
           </tr>
         </thead>
         <tbody id="drone-list">
