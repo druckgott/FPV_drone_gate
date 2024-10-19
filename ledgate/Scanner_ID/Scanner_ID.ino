@@ -61,7 +61,7 @@ uint32_t droneColors[10] = {
     0x00FFFF, // Drone_06: Cyan
     0xFFA500, // Drone_07: Orange
     0x800080, // Drone_08: Lila
-    0xFFFFFF, // Drone_09: Weiß
+    0x4bb7d6, // Drone_09: Türkis
     0x808080  // Drone_10: Grau
 };
 
@@ -79,6 +79,16 @@ long calculateRSSIFromDistance(float distance_cm) {
     return A - 10 * n * log10(distance_m);  // Berechnung des RSSI-Werts
 }
 
+void setAllLEDs(uint32_t color, uint8_t brightness) {
+    strip.setBrightness(brightness); // Setzt die Helligkeit für alle LEDs
+    
+    for (int i = 0; i < NUM_LEDS; i++) {
+        strip.setPixelColor(i, color); // Setzt jede LED auf die gleiche Farbe
+    }
+    
+    strip.show(); // Aktualisiert die LEDs, damit die Farbe und Helligkeit angezeigt werden
+}
+
 // Funktion zur Suche von Drohnen in der Umgebung mit einem Abstand in cm
 void scanForDrones(float distance_cm) {
     long rssiThreshold = calculateRSSIFromDistance(distance_cm); // Berechnung des RSSI-Schwellenwerts
@@ -94,7 +104,8 @@ void scanForDrones(float distance_cm) {
 
     // Überprüfen, ob Netzwerke gefunden wurden
     if (n == 0) {
-        Serial.println("Keine Netzwerke (Drone_*) gefunden.");
+        Serial.println("Keine Netzwerke gefunden.");
+        setAllLEDs(strip.Color(0, 0, 0), 0); // aus und 0% wenn kein Netzwerk gefunden
     } else {
         // Durchlaufen aller gefundenen Netzwerke
         for (int i = 0; i < n; i++) {
@@ -132,6 +143,15 @@ void scanForDrones(float distance_cm) {
                     droneInfo["rssi"] = filteredRSSI;
                     droneInfo["isClosest"] = (filteredRSSI > calculateRSSIFromDistance(distance_cm)); // Marker für die nächste Drohne
                 }
+            }
+
+            size_t droneCount = droneData["drones"].size(); // Größe des JSON-Arrays für Drohnen abrufen
+            #if DEBUG
+            Serial.printf("Anzahl der Drohnen: %zu\n", droneCount); // Ausgabe der Anzahl
+            #endif
+            if (droneCount == 0) {
+                Serial.println("Keine Drone_* gefunden.");
+                setAllLEDs(strip.Color(255, 255, 255), 128); // Weiß und 50% Helligkeit
             }
         }
 
@@ -234,7 +254,7 @@ void handleConfigPage() {
             const defaultColors = [
                 "#FF0000", "#FFFF00", "#00FF00", "#0000FF", 
                 "#FF00FF", "#00FFFF", "#FFA500", "#800080", 
-                "#FFFFFF", "#808080"
+                "#4bb7d6", "#808080"
             ];
             for (let i = 0; i < 10; i++) {
                 document.getElementById("drone_0" + (i + 1)).value = defaultColors[i];
