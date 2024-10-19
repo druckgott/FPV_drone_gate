@@ -34,6 +34,7 @@ int LOW_PASS_FILTER_FREQ = 60;  // Frequenz des Tiefpassfilters in Hz (15 bis 10
 const float dt = scanInterval / 1000.0; // Zeitintervall in Sekunden
 float alpha = 0; // Filterfaktor
 float lastFilteredRSSI = 0; // Letzter gefilterter RSSI-Wert
+bool ledWhenNoDrone = false; // Standardmäßig auf 'false' setzen
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -49,7 +50,8 @@ StaticJsonDocument<1024> droneData;
 #define EEPROM_BRIGHTNESS_ADDR 0
 #define EEPROM_LOW_PASS_FILTER_ADDR 1
 #define EEPROM_DISTANCE_CM_ADDR 2
-#define EEPROM_COLOR_START_ADDR 10 // Beginn der Farbspeicherung
+#define EEPROM_COLOR_START_ADDR 10 // Beginn der Farbspeicherung EEPROM_COLOR_START_ADDR + 10 * 4 = 50
+#define EEPROM_LED_WHEN_NO_DRONE_ADDR 50 // Adresse für Boolean-Wert
 
 // Farben für jede Drohne
 uint32_t droneColors[10] = {
@@ -158,7 +160,7 @@ void scanForDrones(float distance_cm) {
             #if DEBUG
             Serial.printf("Anzahl der Drohnen: %zu\n", droneCount); // Ausgabe der Anzahl
             #endif
-            if (droneCount == 0) {
+            if (droneCount == 0 && ledWhenNoDrone) {
                 #if DEBUG
                 Serial.println("Keine Drone_* gefunden.");
                 #endif
@@ -219,6 +221,9 @@ void loadConfigFromEEPROM() {
     int colorAddr = EEPROM_COLOR_START_ADDR + (i * sizeof(uint32_t));
     EEPROM.get(colorAddr, droneColors[i]);
   }
+
+  // Boolean-Wert für LED-Umschaltung laden
+  ledWhenNoDrone = EEPROM.read(EEPROM_LED_WHEN_NO_DRONE_ADDR) == 1;
 }
 
 void saveConfigToEEPROM() {
@@ -231,6 +236,10 @@ void saveConfigToEEPROM() {
     int colorAddr = EEPROM_COLOR_START_ADDR + (i * sizeof(uint32_t));
     EEPROM.put(colorAddr, droneColors[i]);
   }
+
+  // Boolean-Wert für LED-Umschaltung speichern
+  EEPROM.write(EEPROM_LED_WHEN_NO_DRONE_ADDR, ledWhenNoDrone ? 1 : 0);
+
   EEPROM.commit(); // Änderungen im EEPROM speichern
 }
 
@@ -287,6 +296,10 @@ void handleConfigPage() {
 
         <label for="distance_cm">Entfernung (1-10000 cm):</label>
         <input type="number" id="distance_cm" name="distance_cm" min="1" max="10000" value=")=====" + String(distance_cm) + R"=====(">
+        <br><br>
+
+        <label for="ledWhenNoDrone">LED auf Weiß umschalten, wenn keine Drohne erkannt wird:</label>
+        <input type="checkbox" id="ledWhenNoDrone" name="ledWhenNoDrone")=====" + (ledWhenNoDrone ? "checked" : "") + R"=====( value="1">
         <br><br>
 
         )=====";
@@ -350,6 +363,14 @@ void handleSaveConfig() {
     }
   }
 
+  if (server.hasArg("ledWhenNoDrone")) {
+    // Wenn die Checkbox angehakt ist, wird der Wert "1" übergeben, damit ist die variable true gesetzt
+    ledWhenNoDrone = (server.arg("ledWhenNoDrone") == "1");
+  } else {
+    // Wenn das Argument fehlt, ist die Checkbox nicht angehakt, setze ledWhenNoDrone auf false
+    ledWhenNoDrone = false;
+  }
+
 #if ENABLE_COLOR_PICKER
     for (int i = 0; i < 10; i++) {
         String hexFieldName = "drone_0" + String(i + 1) + "_hex"; // Name des Textfelds für den Hex-Wert
@@ -372,8 +393,9 @@ void handleSaveConfig() {
             } else {
                 Serial.println("Invalid hex value for Drone " + String(i + 1) + ": " + hexValue); // Fehlerprotokoll
             }
-
+            #if DEBUG
             Serial.println("Drone " + String(i + 1) + " Color: " + String(droneColors[i], HEX)); // Debugging
+            #endif
         } else {
             Serial.println("No argument found for Drone " + String(i + 1)); // Fehlerprotokoll, wenn das Argument fehlt
         }
