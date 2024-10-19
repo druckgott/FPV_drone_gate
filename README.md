@@ -8,8 +8,12 @@
 # Hotspot-Scan: 
 * Das Gate scannt nach anderen Hotspots mit den Namen Drone_XX, bis maximal 10 Drones gefunden werden.
 
+# ESP8266 in Gate:
+* Der ESP ist über die IP 192.168.4.1 erreichbar nachdem sich mit dem AP verbunden wurde. AP: DRONE_GATE_01, PW: 12345678 --> hier muss gebenfalls bei mehreren Gates der Zähler der SSID angepasst werden, dieser befindet sich im oberen Bereich des Codes.
+
 # ESP8266 in Drones: 
-* Auf jeder Drone kann ein ESP8266 verbaut sein. Dieser wird gescannt, ohne eine Verbindung aufzubauen, um den Ablauf zu beschleunigen.
+* Auf jeder Drone kann ein ESP8266 verbaut sein. Dieser wird gescannt, ohne eine Verbindung aufzubauen, um den Ablauf zu beschleunigen. Es ist nur eine Stromverbindung für den ESP in der Drohne notwendig, nachdem die Software geflashed wurde.
+* Der ESP ist über die IP 192.168.4.1 erreichbar nachdem sich mit dem AP verbunden wurde. AP: DRONE_XX, PW: 12345678
 
 # LED-Farbauswahl: 
 * Für jede Drone kann eine individuelle LED-Farbe ausgewählt werden. Basierend auf dem RSSI-Signal wird die LED-Farbe des Gates auf die Farbe der Drone eingestellt, die den niedrigsten RSSI-Wert hat.
