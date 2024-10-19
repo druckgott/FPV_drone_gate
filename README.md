@@ -1,6 +1,6 @@
-![config screenshot](img/Drone_Gate.png)
+![config screenshot](ledgate/img/Drone_Gate.png)
 
-![config screenshot](img/Config.png)
+![config screenshot](ledgate/img/Config.png)
 
 # LED-Anschluss: 
 * Am FPV Drone Gate können über den D4 Pin (GPIO2) LEDs angeschlossen werden.
