@@ -1,0 +1,68 @@
+local rssiValues = {}
+local maxValues = 10 -- Anzahl der zu speichernden Werte
+local startTriggered = false
+local endTriggered = false
+
+function checkRSSI(currentRSSI)
+    -- Füge den aktuellen RSSI-Wert zur Liste der Werte hinzu
+    table.insert(rssiValues, currentRSSI)
+    
+    -- Halte nur die letzten 10 Werte
+    if #rssiValues > maxValues then
+        table.remove(rssiValues, 1)
+    end
+    
+    -- Überprüfe, ob genug Werte zum Berechnen vorhanden sind
+    if #rssiValues == maxValues then
+        local decreasing = true
+        local increasing = true
+        
+        -- Überprüfe, ob die Werte abnehmen
+        for i = 2, maxValues do
+            if rssiValues[i] >= rssiValues[i - 1] then
+                decreasing = false
+            end
+            if rssiValues[i] <= rssiValues[i - 1] then
+                increasing = false
+            end
+        end
+        
+        -- Wenn wir einen abnehmenden und dann einen zunehmenden Trend sehen
+        if decreasing and not startTriggered then
+            print("Sinken erkannt, Starttrigger gesetzt")
+            startTriggered = true
+        elseif increasing and startTriggered and not endTriggered then
+            -- Berechne den Winkel zwischen den Werten
+            local angle = calculateAngle(rssiValues)
+            if angle < 180 then
+                endTriggered = true
+                print("Endtrigger gesetzt, Schnittpunkt erreicht")
+                
+                -- Triggerlogik hier
+                handleGatePassage()
+                
+                -- Zurücksetzen für den nächsten Durchgang
+                startTriggered = false
+                endTriggered = false
+                rssiValues = {} -- Leere die Liste für den nächsten Durchgang
+            end
+        end
+    end
+end
+
+function calculateAngle(values)
+    -- Berechne den Winkel zwischen den letzten Werten
+    -- Hier kannst du die Steigung oder andere Logiken verwenden
+    local lastValue = values[#values]
+    local secondLastValue = values[#values - 1]
+    
+    -- Beispiel: einfache Berechnung für den Winkel
+    local slope = lastValue - secondLastValue
+    local angle = math.deg(math.atan(slope)) -- Umrechnung in Grad
+    return angle
+end
+
+function handleGatePassage()
+    -- Hier kannst du die Logik für die Verarbeitung des Gate-Durchgangs implementieren
+    print("Gate-Durchgang verarbeitet!")
+end

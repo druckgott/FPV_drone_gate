@@ -12,7 +12,7 @@
 unsigned long previousMillis = 0; // speichert die Zeit des letzten Scans
 unsigned long elapsedMillis = 0;  // speichert die verstrichene Zeit zwischen Scans
 const unsigned long scanInterval = 50; // Intervall zwischen den Scans in Millisekunden
-const char* targetSSIDPrefix = "Drohne"; // Ersetze "Drohne" durch den SSID-Präfix, nach dem gesucht werden soll
+const char* targetSSIDPrefix = "Drone"; // Ersetze "Drone" durch den SSID-Präfix, nach dem gesucht werden soll
 
 // Parameter für die Umrechnung von Entfernung in RSSI
 const float A = -40; // Typischer RSSI-Wert in 1 Meter Entfernung
@@ -41,7 +41,7 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ
 // Webserver auf Port 80
 ESP8266WebServer server(80);
 
-// Globale Variablen für Drohnendaten
+// Globale Variablen für Dronendaten
 String closestDrone = "";
 long closestRSSI = LONG_MIN;
 StaticJsonDocument<1024> droneData;
@@ -53,7 +53,7 @@ StaticJsonDocument<1024> droneData;
 #define EEPROM_COLOR_START_ADDR 10 // Beginn der Farbspeicherung EEPROM_COLOR_START_ADDR + 10 * 4 = 50
 #define EEPROM_LED_WHEN_NO_DRONE_ADDR 50 // Adresse für Boolean-Wert
 
-// Farben für jede Drohne
+// Farben für jede Drone
 uint32_t droneColors[10] = {
     0xFF0000, // Drone_01: Rot
     0xFFFF00, // Drone_02: Gelb
@@ -91,23 +91,23 @@ void setAllLEDs(uint32_t color, uint8_t brightness) {
     strip.show(); // Aktualisiert die LEDs, damit die Farbe und Helligkeit angezeigt werden
 }
 
-// Funktion zur Suche von Drohnen in der Umgebung mit einem Abstand in cm
+// Funktion zur Suche von Dronen in der Umgebung mit einem Abstand in cm
 void scanForDrones(float distance_cm) {
     long rssiThreshold = calculateRSSIFromDistance(distance_cm); // Berechnung des RSSI-Schwellenwerts
 
     // Starten des Scanvorgangs
     int n = WiFi.scanNetworks(false, true, true); // Scan mit aktivem Scan und vollständigen Informationen
 
-    // Zurücksetzen der Drohnendaten
+    // Zurücksetzen der Dronendaten
     closestDrone = "";
     closestRSSI = LONG_MIN;
     droneData.clear();
-    droneData["drones"] = JsonArray(); // JSON-Array für Drohnen initialisieren
+    droneData["drones"] = JsonArray(); // JSON-Array für Dronen initialisieren
 
     // Überprüfen, ob Netzwerke gefunden wurden
     if (n == 0) {
-        Serial.println("Keine Netzwerke gefunden.");
-        setAllLEDs(strip.Color(0, 0, 0), 0); // aus und 0% wenn kein Netzwerk gefunden
+        Serial.println("No networks found.");
+        setAllLEDs(strip.Color(255, 255, 255), 20); // aus und 0% wenn kein Netzwerk gefunden
     } else {
         // Durchlaufen aller gefundenen Netzwerke
         for (int i = 0; i < n; i++) {
@@ -120,35 +120,35 @@ void scanForDrones(float distance_cm) {
             if (ssid.startsWith(targetSSIDPrefix)) { // SSID-Präfix prüfen
 
                 #if DEBUG
-                Serial.printf("Gefunden: SSID: %s | gefilterter RSSI: %f\n", ssid.c_str(), filteredRSSI);
+                Serial.printf("Found: SSID: %s | filtered RSSI: %f\n", ssid.c_str(), filteredRSSI);
                 #endif
 
-                // Drohne mit dem stärksten RSSI finden
+                // Drone mit dem stärksten RSSI finden
                 if (filteredRSSI > closestRSSI) {
                     closestDrone = ssid;
                     closestRSSI = filteredRSSI;
                 }
 
-                // Überprüfen, ob die Drohne bereits im Array ist
+                // Überprüfen, ob die Drone bereits im Array ist
                 bool exists = false;
                 for (JsonObject droneInfo : droneData["drones"].as<JsonArray>()) {
                     if (droneInfo["ssid"] == ssid) {
                         exists = true;
-                        break; // Drohne existiert bereits, keine neue hinzufügen
+                        break; // Drone existiert bereits, keine neue hinzufügen
                     }
                 }
 
-                // Drohneninformationen zur JSON-Datenstruktur hinzufügen
+                // Droneninformationen zur JSON-Datenstruktur hinzufügen
                 if (!exists) {
                     JsonObject droneInfo = droneData["drones"].createNestedObject();
                     droneInfo["ssid"] = ssid;
                     droneInfo["rssi"] = filteredRSSI;
-                    droneInfo["isClosest"] = (filteredRSSI > calculateRSSIFromDistance(distance_cm)); // Marker für die nächste Drohne
-                    // Extrahiere die Drohnennummer aus der SSID in einer Zeile
-                    int droneNumber = (ssid[7] >= '0' && ssid[7] <= '9') ? ssid[7] - '0' : -1; // Für Drohne_1 bis Drohne_9
+                    droneInfo["isClosest"] = (filteredRSSI > calculateRSSIFromDistance(distance_cm)); // Marker für die nächste Drone
+                    // Extrahiere die Dronennummer aus der SSID in einer Zeile
+                    int droneNumber = (ssid[7] >= '0' && ssid[7] <= '9') ? ssid[7] - '0' : -1; // Für Drone_1 bis Drone_9
 
-                    // Falls die SSID eine zweistellige Zahl hat (Drohne_10)
-                    if (ssid.length() > 8 && strncmp(ssid.c_str(), "Drohne_", 7) == 0 && ssid[8] >= '0' && ssid[8] <= '9') {
+                    // Falls die SSID eine zweistellige Zahl hat (Drone_10)
+                    if (ssid.length() > 8 && strncmp(ssid.c_str(), "Drone_", 7) == 0 && ssid[8] >= '0' && ssid[8] <= '9') {
                         droneNumber = (ssid[7] - '0') * 10 + (ssid[8] - '0'); // Konvertiere zu einer Zahl
                     }
                     // 1 Abziehen weil die ID bei 1 beginnt, der color array aber bei 0
@@ -156,22 +156,22 @@ void scanForDrones(float distance_cm) {
                 }
             }
 
-            size_t droneCount = droneData["drones"].size(); // Größe des JSON-Arrays für Drohnen abrufen
+            size_t droneCount = droneData["drones"].size(); // Größe des JSON-Arrays für Dronen abrufen
             #if DEBUG
-            Serial.printf("Anzahl der Drohnen: %zu\n", droneCount); // Ausgabe der Anzahl
+            Serial.printf("Number of drones: %zu\n", droneCount); // Output the count
             #endif
             if (droneCount == 0 && ledWhenNoDrone) {
                 #if DEBUG
-                Serial.println("Keine Drone_* gefunden.");
+                Serial.println("No Drone_* found.");
                 #endif
                 setAllLEDs(strip.Color(255, 255, 255), 128); // Weiß und 50% Helligkeit
             }
         }
 
-        // Wenn die nächste Drohne gefunden wurde
+        // Wenn die nächste Drone gefunden wurde
         #if DEBUG
         if (closestDrone != "") {
-            Serial.printf("Nächste Drohne: SSID: %s | gefilterter RSSI: %ld\n", closestDrone.c_str(), closestRSSI);
+            Serial.printf("Nearest drone: SSID: %s | filtered RSSI: %ld\n", closestDrone.c_str(), closestRSSI);
         }
         #endif
 
@@ -179,8 +179,8 @@ void scanForDrones(float distance_cm) {
         droneData["closest"]["ssid"] = closestDrone;
         droneData["closest"]["rssi"] = closestRSSI;
 
-        // Farbe der nächstgelegenen Drohne auf den NeoPixel setzen
-        int closestIndex = closestDrone.substring(closestDrone.indexOf('_') + 1).toInt() - 1; // Drohne Nummer aus SSID extrahieren
+        // Farbe der nächstgelegenen Drone auf den NeoPixel setzen
+        int closestIndex = closestDrone.substring(closestDrone.indexOf('_') + 1).toInt() - 1; // Drone Nummer aus SSID extrahieren
         if (closestIndex >= 0 && closestIndex < 10) {
             // LEDs basierend auf dem RSSI-Wert steuern
             int ledCount = 0; // Anzahl der leuchtenden LEDs festlegen
@@ -196,7 +196,7 @@ void scanForDrones(float distance_cm) {
             // Setze die Farbe für die LEDs
             for (int i = 0; i < NUM_LEDS; i++) {
                 if (i < ledCount) {
-                    strip.setPixelColor(i, droneColors[closestIndex]); // Farbe für die aktive Drohne
+                    strip.setPixelColor(i, droneColors[closestIndex]); // Farbe für die aktive Drone
                 } else {
                     strip.setPixelColor(i, strip.Color(0, 0, 0)); // LEDs ausschalten
                 }
@@ -298,14 +298,14 @@ void handleConfigPage() {
         <input type="number" id="distance_cm" name="distance_cm" min="1" max="10000" value=")=====" + String(distance_cm) + R"=====(">
         <br><br>
 
-        <label for="ledWhenNoDrone">LED auf Weiß umschalten, wenn keine Drohne erkannt wird:</label>
+        <label for="ledWhenNoDrone">LED auf Weiß umschalten, wenn keine Drone erkannt wird:</label>
         <input type="checkbox" id="ledWhenNoDrone" name="ledWhenNoDrone")=====" + (ledWhenNoDrone ? "checked" : "") + R"=====( value="1">
         <br><br>
 
         )=====";
 
 #if ENABLE_COLOR_PICKER
-    html += "<label for=\"color\">Farbauswahl für Drohnen:</label><br>";
+    html += "<label for=\"color\">Farbauswahl für Dronen:</label><br>";
 
     for (int i = 0; i < 10; i++) {
         String droneName = "drone_0" + String(i + 1);
@@ -391,13 +391,13 @@ void handleSaveConfig() {
             if (hexValue.length() == 6) {
                 droneColors[i] = strtol(hexValue.c_str(), NULL, 16); // Konvertiere in Ganzzahl
             } else {
-                Serial.println("Invalid hex value for Drone " + String(i + 1) + ": " + hexValue); // Fehlerprotokoll
+                Serial.println("Invalid hex value for Drone " + String(i + 1) + ": " + hexValue); // Error log
             }
             #if DEBUG
             Serial.println("Drone " + String(i + 1) + " Color: " + String(droneColors[i], HEX)); // Debugging
             #endif
         } else {
-            Serial.println("No argument found for Drone " + String(i + 1)); // Fehlerprotokoll, wenn das Argument fehlt
+            Serial.println("No argument found for Drone " + String(i + 1)); // Error log when the argument is missing
         }
     }
 #endif
@@ -409,7 +409,7 @@ void handleSaveConfig() {
   server.send(303); // HTTP 303 See Other
 }
 
-// Webserver Handler für Drohnendaten
+// Webserver Handler für Dronendaten
 void handleDroneData() {
     String response;
     serializeJson(droneData, response);
@@ -423,7 +423,7 @@ void handleRoot() {
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>Drohnen Scanner</title>
+      <title>Dronen Scanner</title>
       <style>
         body {
           background-color: #f0f0f0;
@@ -476,7 +476,7 @@ void handleRoot() {
             .then(response => response.json())
             .then(data => {
               let droneTable = "";
-              // Sortieren der Drohnen nach Namen
+              // Sortieren der Dronen nach Namen
               data.drones.sort((a, b) => a.ssid.localeCompare(b.ssid));
               for (let i = 0; i < data.drones.length; i++) {
                 let className = data.drones[i].ssid === data.closest.ssid ? "closest" : "farther";
@@ -490,7 +490,7 @@ void handleRoot() {
       </script>
     </head>
     <body>
-      <h1>Drohnen Scanner</h1>
+      <h1>Dronen Scanner</h1>
       <table>
         <thead>
           <tr>
@@ -518,7 +518,7 @@ void setup() {
     WiFi.mode(WIFI_AP); // AP-Mode aktivieren
     WiFi.softAP(ssid, password); // SSID und Passwort setzen
     IPAddress IP = WiFi.softAPIP();      // IP-Adresse im AP-Modus holen
-    Serial.println("WiFi AP gestartet mit IP: ");
+    Serial.println("WiFi AP started with IP: ");
     Serial.println(IP);
 
     strip.begin(); // NeoPixel initialisieren
@@ -527,12 +527,13 @@ void setup() {
 
     server.on("/", handleRoot); // Root-Handler
     server.on("/droneData", handleDroneData); // JSON-Handler
-    server.begin(); // Webserver starten
-    Serial.println("Webserver gestartet.");
-
+    
     // Neue Routen für Konfigurationsseite
     server.on("/config", handleConfigPage);
     server.on("/saveConfig", HTTP_POST, handleSaveConfig);
+    
+    server.begin(); // Webserver starten
+    Serial.println("Web server started.");
 
 }
 
@@ -542,6 +543,6 @@ void loop() {
     elapsedMillis = millis();
     if (elapsedMillis - previousMillis >= scanInterval) {
         previousMillis = elapsedMillis;
-        scanForDrones(distance_cm); // Scannen nach Drohnen
+        scanForDrones(distance_cm); // Scannen nach Dronen
     }
 }
