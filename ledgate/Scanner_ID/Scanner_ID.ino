@@ -243,14 +243,14 @@ void saveConfigToEEPROM() {
   EEPROM.commit(); // Änderungen im EEPROM speichern
 }
 
-// Webserver Handler für die Konfigurationsseite
+// Web server handler for the configuration page
 void handleConfigPage() {
     String html = R"=====(
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>Konfiguration</title>
+      <title>Configuration</title>
       <style>
         body {
           background-color: #f0f0f0;
@@ -258,10 +258,10 @@ void handleConfigPage() {
           color: black;
         }
         input[type="number"] {
-          width: 50px; /* Breite für Zahlenfelder */
+          width: 50px; /* Width for number fields */
         }
         input[type="text"] {
-          width: 80px; /* Breite für Hex-Wert Eingabefelder */
+          width: 80px; /* Width for hex value input fields */
         }
       </style>
       <script>
@@ -270,7 +270,7 @@ void handleConfigPage() {
         }
         
         function resetColors() {
-            // Setze die Standardfarben zurück
+            // Reset to default colors
             const defaultColors = [
                 "#FF0000", "#FFFF00", "#00FF00", "#0000FF", 
                 "#FF00FF", "#00FFFF", "#FFA500", "#800080", 
@@ -284,9 +284,9 @@ void handleConfigPage() {
       </script>
     </head>
     <body>
-      <h1>LED Konfiguration</h1>
+      <h1>LED Configuration</h1>
       <form action="/saveConfig" method="POST">
-        <label for="brightness">LED Helligkeit (0-255):</label>
+        <label for="brightness">LED Brightness (0-255):</label>
         <input type="number" id="brightness" name="brightness" min="0" max="255" value=")=====" + String(BRIGHTNESS) + R"=====(">
         <br><br>
 
@@ -294,44 +294,45 @@ void handleConfigPage() {
         <input type="number" id="lowpass" name="lowpass" min="1" max="100" value=")=====" + String(LOW_PASS_FILTER_FREQ) + R"=====(">
         <br><br>
 
-        <label for="distance_cm">Entfernung (1-10000 cm):</label>
+        <label for="distance_cm">Distance (1-10000 cm):</label>
         <input type="number" id="distance_cm" name="distance_cm" min="1" max="10000" value=")=====" + String(distance_cm) + R"=====(">
+        <span>This is the estimated distance (calculated by RSSI) where the drone will be detected and the color of the gate can be switched.</span>
         <br><br>
 
-        <label for="ledWhenNoDrone">LED auf Weiß umschalten, wenn keine Drone erkannt wird:</label>
+        <label for="ledWhenNoDrone">Switch LED to white when no drone is detected:</label>
         <input type="checkbox" id="ledWhenNoDrone" name="ledWhenNoDrone")=====" + (ledWhenNoDrone ? "checked" : "") + R"=====( value="1">
         <br><br>
 
         )=====";
 
 #if ENABLE_COLOR_PICKER
-    html += "<label for=\"color\">Farbauswahl für Dronen:</label><br>";
+    html += "<label for=\"color\">Color selection for drones:</label><br>";
 
     for (int i = 0; i < 10; i++) {
         String droneName = "drone_0" + String(i + 1);
         String hexColor = String(droneColors[i], HEX);
 
-        // Fügen Sie führende Nullen hinzu, um sicherzustellen, dass der Wert 6-stellig ist
+        // Add leading zeros to ensure the value is 6 digits
         while (hexColor.length() < 6) {
             hexColor = "0" + hexColor; 
         }
-        hexColor = "#" + hexColor; // Voranstellen des '#' für die Farbauswahl
+        hexColor = "#" + hexColor; // Prepend '#' for the color selection
 
-        html += "<label for=\"" + droneName + "\">Drone_0" + String(i + 1) + " (Farben):</label>";
+        html += "<label for=\"" + droneName + "\">Drone_0" + String(i + 1) + " (Colors):</label>";
         html += "<input type=\"color\" id=\"" + droneName + "\" name=\"" + droneName + "\" value=\"" + hexColor + "\" onchange=\"updateHexValue(this, '" + droneName + "_hex')\">";
         html += "<input type=\"text\" id=\"" + droneName + "_hex\" name=\"" + droneName + "_hex\" value=\"" + hexColor + "\"><br>";
-        //html += "<span>Aktueller Wert: " + hexColor + "</span><br>";
+        //html += "<span>Current value: " + hexColor + "</span><br>";
     }
 
     html += "<br><br>";
 #endif
 
-    // Button zum Zurücksetzen der Farben
-    html += "<input type=\"button\" value=\"Farben zurücksetzen\" onclick=\"resetColors()\"><br><br>";
+    // Button to reset colors
+    html += "<input type=\"button\" value=\"Reset colors\" onclick=\"resetColors()\"><br><br>";
 
     html += R"=====(
-        <input type="submit" value="Speichern">
-        <input type="button" value="Zurück" onclick="window.location.href='/'">
+        <input type="submit" value="Save">
+        <input type="button" value="Back" onclick="window.location.href='/'">
       </form>
     </body>
     </html>
@@ -416,14 +417,14 @@ void handleDroneData() {
     server.send(200, "application/json", response);
 }
 
-// Webserver Handler für die Webseite
+// Webserver Handler for the webpage
 void handleRoot() {
     String html = R"=====(
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>Dronen Scanner</title>
+      <title>Drone Scanner</title>
       <style>
         body {
           background-color: #f0f0f0;
@@ -441,7 +442,7 @@ void handleRoot() {
           border: 1px solid black;
           padding: 15px;
           text-align: left;
-          width: 33.33%; /* Jede Spalte nimmt 1/3 der Gesamtbreite ein */
+          width: 33.33%; /* Each column takes 1/3 of the total width */
         }
         .closest {
           background-color: lime;
@@ -452,17 +453,17 @@ void handleRoot() {
           color: black;
         }
         .config-button {
-          margin-top: 20px; /* Abstand nach oben */
-          padding: 10px 20px; /* Polsterung für den Button */
-          font-size: 16px; /* Schriftgröße */
-          background-color: #4CAF50; /* Grüner Hintergrund */
-          color: white; /* Weiße Schriftfarbe */
-          border: none; /* Keine Rahmen */
-          border-radius: 5px; /* Abgerundete Ecken */
-          cursor: pointer; /* Zeiger bei Hover */
+          margin-top: 20px; /* Space above */
+          padding: 10px 20px; /* Padding for the button */
+          font-size: 16px; /* Font size */
+          background-color: #4CAF50; /* Green background */
+          color: white; /* White text color */
+          border: none; /* No borders */
+          border-radius: 5px; /* Rounded corners */
+          cursor: pointer; /* Pointer on hover */
         }
         .config-button:hover {
-          background-color: #45a049; /* Dunkleres Grün beim Hover */
+          background-color: #45a049; /* Darker green on hover */
         }
         .drone-color {
           width: 100px;
@@ -476,7 +477,7 @@ void handleRoot() {
             .then(response => response.json())
             .then(data => {
               let droneTable = "";
-              // Sortieren der Dronen nach Namen
+              // Sort drones by name
               data.drones.sort((a, b) => a.ssid.localeCompare(b.ssid));
               for (let i = 0; i < data.drones.length; i++) {
                 let className = data.drones[i].ssid === data.closest.ssid ? "closest" : "farther";
@@ -486,23 +487,23 @@ void handleRoot() {
               document.getElementById("drone-list").innerHTML = droneTable;
             });
         }
-        setInterval(fetchDroneData, 100); // Aktualisiert die Daten alle 0.1 Sekunde
+        setInterval(fetchDroneData, 100); // Updates data every 0.1 seconds
       </script>
     </head>
     <body>
-      <h1>Dronen Scanner</h1>
+      <h1>Drone Scanner</h1>
       <table>
         <thead>
           <tr>
             <th>SSID</th>
             <th>RSSI</th>
-            <th>Farbe</th>
+            <th>Color</th>
           </tr>
         </thead>
         <tbody id="drone-list">
         </tbody>
       </table>
-      <button class="config-button" onclick="window.location.href='/config'">Konfiguration</button>
+      <button class="config-button" onclick="window.location.href='/config'">Configuration</button>
     </body>
     </html>
     )=====";
