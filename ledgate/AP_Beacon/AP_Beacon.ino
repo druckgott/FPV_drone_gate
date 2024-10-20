@@ -9,6 +9,10 @@ String baseSSID = "Drone_";
 String ssidSuffix = "01";  // Suffix der SSID aus EEPROM oder Default
 const char* password = "";  // Passwort bleibt leer für ungesichertes WLAN
 
+// EEPROM-Speicherbereich für den SSID-Suffix
+const int ssidSuffixAddress = 0; // Speicheradresse für den SSID-Suffix
+const int ssidSuffixSize = 2; // Größe des Speicherbereichs für den SSID-Suffix (z.B. 01, 02, ..., 10)
+
 void setup() {
   Serial.begin(115200);
 
@@ -16,11 +20,11 @@ void setup() {
   EEPROM.begin(512);
 
   // SSID-Suffix aus dem EEPROM laden (Adresse 0)
-  int storedSuffix = EEPROM.read(0);
+  int storedSuffix = EEPROM.read(ssidSuffixAddress);
   if (storedSuffix >= 1 && storedSuffix <= 10) {
     ssidSuffix = String(storedSuffix < 10 ? "0" : "") + String(storedSuffix);
   } else {
-    EEPROM.write(0, 1);  // Standard auf "01" setzen, falls nichts gültiges gespeichert ist
+    EEPROM.write(ssidSuffixAddress, 1);  // Standard auf "01" setzen, falls nichts gültiges gespeichert ist
     EEPROM.commit();
   }
 
@@ -85,7 +89,7 @@ void handleSave() {
   if (server.hasArg("ssidSuffix")) {
     int newSuffix = server.arg("ssidSuffix").toInt();
     if (newSuffix >= 1 && newSuffix <= 10) {
-      EEPROM.write(0, newSuffix);
+      EEPROM.write(ssidSuffixAddress, newSuffix);
       EEPROM.commit();
       server.send(200, "text/html", "<html><body><h1>SSID saved! Restarting...</h1></body></html>");
       delay(1000);  // Small delay before restarting the ESP
