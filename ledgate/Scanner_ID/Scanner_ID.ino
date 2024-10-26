@@ -24,7 +24,7 @@ const char* password = "12345678"; // WiFi Passwort
 float distance_cm = 150.0; // Setze den gewünschten Abstand in cm
 
 // NeoPixel Konfiguration
-#define NUM_LEDS 300
+#define NUM_LEDS 150
 #define LED_PIN 2          // Pin für die NeoPixel-LEDs (GPIO2, D4)
 int BRIGHTNESS = 60; // Helligkeit als Konstante definieren
 #define ENABLE_COLOR_PICKER true // Kann auf false gesetzt werden, um den Farbpicker zu deaktivieren
