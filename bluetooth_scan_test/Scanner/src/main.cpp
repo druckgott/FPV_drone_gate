@@ -16,11 +16,11 @@ uint8_t broadcastAddress[] = {0x4A, 0x3F, 0xDA, 0x7E, 0x58, 0x9F};
 typedef struct {
   char deviceName[32];
   int rssi;
+  int counter; // Zähler hinzufügen
 } DroneData;
 
 DroneData droneData;
-
-
+int counter = 0; // Zählervariable
 
 // Callback-Funktion für ESP-NOW-Sendebestätigung
 void onSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -29,7 +29,6 @@ void onSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Erfolgreich" : "Fehlgeschlagen");
   #endif
 }
-
 
 // ESP-NOW initialisieren
 void initESPNow() {
@@ -40,8 +39,6 @@ void initESPNow() {
   esp_now_register_send_cb(onSent);
 }
 
-
-
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
     std::string deviceName = advertisedDevice.getName();
@@ -51,6 +48,7 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
       // DeviceName und RSSI in struct kopieren
       strncpy(droneData.deviceName, deviceName.c_str(), sizeof(droneData.deviceName));
       droneData.rssi = rssi;
+      droneData.counter = counter; // Zählerstand in die Struktur kopieren
 
       // Daten per ESP-NOW senden
       esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &droneData, sizeof(droneData));
@@ -61,6 +59,8 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
         Serial.println(deviceName.c_str());
         Serial.print("Signalstärke (RSSI): ");
         Serial.println(rssi);
+        Serial.print("Zählerstand: ");
+        Serial.println(counter);
         Serial.print("Nachricht gesendet: ");
         Serial.print("ESP_satellit_01: ");
         Serial.print(deviceName.c_str());
@@ -114,6 +114,12 @@ void setup() {
 }
 
 void loop() {
+  // Zähler hochzählen
+  counter++;
+  if (counter > 10000) {
+    counter = 0; // Zähler zurücksetzen
+  }
+
   // Starte den Scan ohne zeitliche Begrenzung und bereinige die Ergebnisse direkt danach
   BLEDevice::getScan()->start(0.1, true); // kurzer Scan, um wiederholte Ergebnisse zu ermöglichen
 
