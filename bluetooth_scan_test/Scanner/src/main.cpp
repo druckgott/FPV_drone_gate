@@ -3,15 +3,44 @@
 #include <BLEScan.h>
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiUdp.h>
+#include <esp_now.h>
 
-#define DEBUG // Kommentiere diese Zeile aus, um Debugging-Ausgaben zu deaktivieren
+//#define DEBUG // Kommentiere diese Zeile aus, um Debugging-Ausgaben zu deaktivieren
 
 const char* ssid = "LED_GATE_SERVER_01";           // SSID des Access Points (ESP8266)
 const char* password = "12345678";                  // Passwort des Access Points (ESP8266)
-WiFiUDP udp;
-const char* udpAddress = "192.168.4.1";             // IP-Adresse des ESP8266 (AP)
-const int udpPort = 1234;
+
+// Empfänger MAC-Adresse eintragen (Beispiel MAC-Adresse, anpassen!)
+uint8_t broadcastAddress[] = {0x4A, 0x3F, 0xDA, 0x7E, 0x58, 0x9F};
+
+typedef struct {
+  char deviceName[32];
+  int rssi;
+} DroneData;
+
+DroneData droneData;
+
+
+
+// Callback-Funktion für ESP-NOW-Sendebestätigung
+void onSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  #ifdef DEBUG
+  Serial.print("Sende-Status: ");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Erfolgreich" : "Fehlgeschlagen");
+  #endif
+}
+
+
+// ESP-NOW initialisieren
+void initESPNow() {
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Fehler bei der Initialisierung von ESP-NOW");
+    return;
+  }
+  esp_now_register_send_cb(onSent);
+}
+
+
 
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
@@ -19,19 +48,12 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
     if (!deviceName.empty() && deviceName.find("Drone_") != std::string::npos) {
       int rssi = advertisedDevice.getRSSI();
 
-      // Erstelle die Nachricht im Format "ESP_satellit_01:Drone_XX:rssi"
-      uint8_t message[6]; // Beispiel: 1 Byte für Prefix + 2 Bytes für ID + 2 Bytes für RSSI
-      message[0] = 'E'; // 'E' für ESP_satellit
-      message[1] = deviceName[6] - '0'; // Drohnen-ID (nur eine Ziffer für Demo)
-      message[2] = deviceName[7] - '0'; // Drohnen-ID (nur eine Ziffer für Demo)
-      message[3] = (uint8_t)(rssi + 200); // RSSI Offset um 200 (von -200 bis 31)
-      message[4] = 0; // Reservierter Platz (z.B. für zukünftige Verwendung)
-      message[5] = 0; // Reservierter Platz (z.B. für zukünftige Verwendung)
+      // DeviceName und RSSI in struct kopieren
+      strncpy(droneData.deviceName, deviceName.c_str(), sizeof(droneData.deviceName));
+      droneData.rssi = rssi;
 
-      // Sende die Nachricht per UDP
-      udp.beginPacket(udpAddress, udpPort);
-      udp.write(message, sizeof(message)); // Korrekte Verwendung der write-Funktion
-      udp.endPacket();
+      // Daten per ESP-NOW senden
+      esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &droneData, sizeof(droneData));
 
       #ifdef DEBUG
         Serial.println("Scan-Ergebnis gefunden:");
@@ -44,6 +66,7 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
         Serial.print(deviceName.c_str());
         Serial.print(" RSSI: ");
         Serial.println(rssi);
+        Serial.println(result == ESP_OK ? "Erfolgreich gesendet" : "Senden fehlgeschlagen");
       #endif
     }
 
@@ -53,7 +76,7 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
 
 void setup() {
   Serial.begin(115200);
-  delay(3000); // 1 Sekunde warten
+  delay(3000);
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -61,6 +84,21 @@ void setup() {
     Serial.println("Verbinde mit dem Access Point...");
   }
   Serial.println("Verbunden mit dem Access Point");
+
+  // ESP-NOW initialisieren
+  WiFi.mode(WIFI_STA);
+  initESPNow();
+
+  // Empfänger hinzufügen
+  esp_now_peer_info_t peerInfo;
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;  
+  peerInfo.encrypt = false;
+  
+  if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+    Serial.println("Fehler beim Hinzufügen des Peers");
+    return;
+  }
 
   Serial.println("Startet kontinuierlichen BLE-Scan...");
 
