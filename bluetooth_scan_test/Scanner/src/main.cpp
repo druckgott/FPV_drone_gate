@@ -4,23 +4,29 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <string>  // In Arduino wird dies meist automatisch eingebunden
 
 //#define DEBUG // Kommentiere diese Zeile aus, um Debugging-Ausgaben zu deaktivieren
 
+std::string deviceSuffix = "_02";  // Definiere das Suffix, z.B. "_01", "_02", etc.
 const char* ssid = "LED_GATE_SERVER_01";           // SSID des Access Points (ESP8266)
 const char* password = "12345678";                  // Passwort des Access Points (ESP8266)
 
 // Empfänger MAC-Adresse eintragen (Beispiel MAC-Adresse, anpassen!)
 uint8_t broadcastAddress[] = {0x4A, 0x3F, 0xDA, 0x7E, 0x58, 0x9F};
 
+// Speichert die MAC-Adresse des ESP32
+//uint8_t esp32MacAddress[6];
+
 typedef struct {
   char deviceName[32];
   int rssi;
-  int counter; // Zähler hinzufügen
+  int count; // Zähler hinzufügen
+  //uint8_t macAddress[6]; // Array zur Speicherung der MAC-Adresse
 } DroneData;
 
 DroneData droneData;
-int counter = 0; // Zählervariable
+int count = 0; // Zählervariable
 
 // Callback-Funktion für ESP-NOW-Sendebestätigung
 void onSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -45,10 +51,14 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
     if (!deviceName.empty() && deviceName.find("Drone_") != std::string::npos) {
       int rssi = advertisedDevice.getRSSI();
 
+      // Kombiniere den Gerätenamen mit dem Suffix
+      std::string fullDeviceName = deviceName + deviceSuffix;
+
       // DeviceName und RSSI in struct kopieren
-      strncpy(droneData.deviceName, deviceName.c_str(), sizeof(droneData.deviceName));
+      strncpy(droneData.deviceName, fullDeviceName.c_str(), sizeof(droneData.deviceName));
       droneData.rssi = rssi;
-      droneData.counter = counter; // Zählerstand in die Struktur kopieren
+      droneData.count = count; // Zählerstand in die Struktur kopieren
+      //memcpy(droneData.macAddress, esp32MacAddress, 6); // MAC-Adresse kopieren
 
       // Daten per ESP-NOW senden
       esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &droneData, sizeof(droneData));
@@ -56,14 +66,14 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
       #ifdef DEBUG
         Serial.println("Scan-Ergebnis gefunden:");
         Serial.print("Gerätename: ");
-        Serial.println(deviceName.c_str());
+        Serial.println(fullDeviceName.c_str());
         Serial.print("Signalstärke (RSSI): ");
         Serial.println(rssi);
         Serial.print("Zählerstand: ");
-        Serial.println(counter);
+        Serial.println(count);
         Serial.print("Nachricht gesendet: ");
         Serial.print("ESP_satellit_01: ");
-        Serial.print(deviceName.c_str());
+        Serial.print(fullDeviceName.c_str());
         Serial.print(" RSSI: ");
         Serial.println(rssi);
         Serial.println(result == ESP_OK ? "Erfolgreich gesendet" : "Senden fehlgeschlagen");
@@ -74,16 +84,27 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   }
 };
 
-void setup() {
-  Serial.begin(115200);
-  delay(3000);
-
+void connectToWiFi() {
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("Verbinde mit dem Access Point...");
   }
   Serial.println("Verbunden mit dem Access Point");
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(3000);
+
+  connectToWiFi(); // WiFi-Verbindung aufbauen
+
+  // Gebe die MAC-Adresse des ESP32 aus
+  Serial.print("MAC-Adresse des ESP32: ");
+  Serial.println(WiFi.macAddress());
+
+    // Speichere die MAC-Adresse des ESP32
+  //WiFi.macAddress(esp32MacAddress);
 
   // ESP-NOW initialisieren
   WiFi.mode(WIFI_STA);
@@ -114,10 +135,16 @@ void setup() {
 }
 
 void loop() {
+
+  // Überprüfe die WiFi-Verbindung
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Verbindung verloren. Versuche, erneut zu verbinden...");
+    connectToWiFi(); // WiFi erneut verbinden
+  }
   // Zähler hochzählen
-  counter++;
-  if (counter > 10000) {
-    counter = 0; // Zähler zurücksetzen
+  count++;
+  if (count > 10000) {
+    count = 0; // Zähler zurücksetzen
   }
 
   // Starte den Scan ohne zeitliche Begrenzung und bereinige die Ergebnisse direkt danach

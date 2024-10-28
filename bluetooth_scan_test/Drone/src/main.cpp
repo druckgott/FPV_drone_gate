@@ -29,10 +29,10 @@ void createAdvertisementData(BLEAdvertising *pAdvertising) {
 void setup() {
   Serial.begin(115200);
   Serial.print("Device name: ");
-  Serial.println("Drone_01");
+  Serial.println("Drone_03");
 
   // Initialize BLE
-  BLEDevice::init("Drone_01");
+  BLEDevice::init("Drone_03");
 
   // Configure BLE advertising
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
