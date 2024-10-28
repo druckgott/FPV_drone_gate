@@ -33,6 +33,7 @@ typedef struct {
 
 DroneData drones[MAX_DRONES];  // Array zum Speichern von Drohnendaten
 int droneCount = 0;             // Zähler für die Anzahl der gespeicherten Drohnen
+int rssiThreshold = THRESHOLD_RSSI; // Speichere den Wert in einer int-Variable
 
 ESP8266WebServer server(80);
 
@@ -170,25 +171,51 @@ const char* htmlPage = R"rawl(
     th {
       background-color: #f2f2f2;
     }
+    .green-bg {
+      background-color: #a8e6a1; /* Grün für niedrigen RSSI */
+    }
+    .red-bg {
+      background-color: #f4a8a8; /* Rot für hohen RSSI */
+    }
   </style>
   <script>
+      let THRESHOLD_RSSI_JAVA;
+
+      // Hole den THRESHOLD_RSSI-Wert vom Server
+      fetch('/threshold')
+        .then(response => response.json())
+        .then(data => {
+          THRESHOLD_RSSI_JAVA = data.threshold;
+        });
+
+
     setInterval(function() {
       fetch('/droneData')
       .then(response => response.json())
       .then(data => {
         const tableBody = document.getElementById('droneList');
         tableBody.innerHTML = ''; // Tabelle leeren
+
         data.drones.forEach(drone => {
           const row = document.createElement('tr');
+
+        // Für jeden RSSI-Wert die Hintergrundfarbe basierend auf THRESHOLD_RSSI_JAVA festlegen
+        const rssiCells = drone.rssi.map(rssi => {
+          // Überprüfen, ob rssi einen Wert hat, sonst rot setzen
+          const className = (rssi === null || rssi === undefined || rssi === 0 || rssi <= THRESHOLD_RSSI_JAVA) ? 'red-bg' : 'green-bg';
+          return `<td class="${className}">${rssi || ''}</td>`;
+        });
+
           row.innerHTML = `<td>${drone.deviceName}</td>
-                           <td>${drone.rssi[0] || ''}</td><td>${drone.count[0] || ''}</td>
-                           <td>${drone.rssi[1] || ''}</td><td>${drone.count[1] || ''}</td>
-                           <td>${drone.rssi[2] || ''}</td><td>${drone.count[2] || ''}</td>
+                           ${rssiCells[0]}<td>${drone.count[0] || ''}</td>
+                           ${rssiCells[1]}<td>${drone.count[1] || ''}</td>
+                           ${rssiCells[2]}<td>${drone.count[2] || ''}</td>
                            <td>${drone.isInside ? 'true' : 'false'}</td>`;
+
           tableBody.appendChild(row);
         });
       });
-    }, 10); // Aktualisiere alle 0.01 Sekunde
+    }, 1000); // Aktualisiere alle 1 Sekunde
   </script>
 </head>
 <body>
@@ -248,6 +275,14 @@ void setup() {
   server.on("/droneData", []() {
     String json = getDroneDataJson(); // Aufruf der Funktion zur Erstellung des JSON
     server.send(200, "application/json", json);
+  });
+
+  server.on("/threshold", []() {
+  String json;
+  StaticJsonDocument<32> doc;
+  doc["threshold"] = THRESHOLD_RSSI;
+  serializeJson(doc, json);
+  server.send(200, "application/json", json);
   });
 
   server.begin();
