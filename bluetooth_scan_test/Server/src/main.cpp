@@ -45,11 +45,12 @@ int closest_RSSI = 31;
 bool ledWhenNoDrone = false; // Standardmäßig auf 'false' setzen
 unsigned long previousMillis = 0; // speichert die Zeit des letzten Scans
 unsigned long elapsedMillis = 0;  // speichert die verstrichene Zeit zwischen Scans
+int current_drone_color = 0;
 
 // EEPROM Adressen festlegen
 #define EEPROM_SIZE 512                     // Gesamtgröße des EEPROM
 #define EEPROM_BRIGHTNESS_ADDR 0
-#define EEPROM_THRESHOLD_RSSI_ADDR (EEPROM_BRIGHTNESS_ADDR + sizeof(uint8_t))
+#define EEPROM_THRESHOLD_RSSI_ADDR (EEPROM_BRIGHTNESS_ADDR + sizeof(int))
 #define EEPROM_RESET_INTERVAL_ADDR (EEPROM_THRESHOLD_RSSI_ADDR + sizeof(int))
 #define EEPROM_COLOR_START_ADDR (EEPROM_RESET_INTERVAL_ADDR + sizeof(int))
 #define EEPROM_LED_WHEN_NO_DRONE_ADDR (EEPROM_COLOR_START_ADDR + (10 * sizeof(uint32_t))) // +10 Farben
@@ -190,7 +191,6 @@ void findClosestDrone(int &closestIndex, float &minAverage) {
       closestIndex = i;
     }
   }
-  //Serial.println("minAverage: " + String(minAverage) + "closestIndex " + String(closestIndex));
 }
 
 void updateLEDBasedOnRSSI(int closestDroneID, int closestRSSI) {
@@ -198,19 +198,21 @@ void updateLEDBasedOnRSSI(int closestDroneID, int closestRSSI) {
     // Anzahl der leuchtenden LEDs bestimmen
     int ledCount = 0;
     
-    if (closestRSSI >= 0) {
+    if (closestRSSI >= -30) {
       ledCount = NUM_LEDS; // Alle LEDs leuchten
-    } else if (closestRSSI <= -100) {
+    } else if (closestRSSI <= -90) {
       ledCount = NUM_LEDS / 2; // 50% der LEDs leuchten
     } else {
       // Interpolation zwischen 0 und -100 für die LED-Anzahl
-      ledCount = map(closestRSSI, -100, 0, NUM_LEDS / 2, NUM_LEDS);
+      ledCount = map(closestRSSI, -90, -30, NUM_LEDS / 2, NUM_LEDS);
     }
 
     // Setze die Farbe für die LEDs
     for (int i = 0; i < NUM_LEDS; i++) {
       if (i < ledCount) {
         strip.setPixelColor(i, droneColors[closestDroneID]); // Farbe für die aktive Drohne
+      }else{
+        strip.setPixelColor(i, strip.Color(0, 0, 0)); // Farbe für die aktive Drohne
       }
     }
     
@@ -218,7 +220,6 @@ void updateLEDBasedOnRSSI(int closestDroneID, int closestRSSI) {
     strip.show(); // Aktualisiere die LEDs
   }
 }
-
 
 // Funktion zum Speichern oder Aktualisieren empfangener Daten
 void storeDroneData(ReceivedDroneData receivedData) {
@@ -242,24 +243,23 @@ void storeDroneData(ReceivedDroneData receivedData) {
       drones[i].failed_value[index] = (receivedData.rssi < THRESHOLD_RSSI) ? receivedData.rssi : 0;
       // isInside anhand der aktuellen RSSI-Werte neu berechnen
       drones[i].isInside = calculateIsInside(drones[i].rssi);
-      //Serial.println("insideinfo: " + String(drones[i].isInside));
       // Aktualisieren der nächstgelegenen Drohne
       int closestDroneIndex;
       float closestRSSI = 31;
       findClosestDrone(closestDroneIndex, closestRSSI);
+      //Farbe ändern wenn die näheste Drone innerhalb des Rings ist
       if (drones[i].isInside && closestDroneIndex != -1) {
-        #ifdef DEBUG
-        Serial.print("Die nächste Drohne ist: ");
-        Serial.println(drones[closestDroneIndex].deviceName);
-        #endif
-        closest_drone_index = closestDroneIndex;
-        closest_RSSI = closestRSSI;
-        updateLEDBasedOnRSSI(String(drones[closestDroneIndex].deviceName).substring(6).toInt(), closestRSSI);
-        //
+        current_drone_color = String(drones[closestDroneIndex].deviceName).substring(6).toInt();
       }else if (ledWhenNoDrone) {
         setAllLEDs(strip.Color(255, 255, 255), BRIGHTNESS);
       }
-
+      #ifdef DEBUG
+      Serial.print("Die nächste Drohne ist: ");
+      Serial.println(drones[closestDroneIndex].deviceName);
+      #endif
+      closest_drone_index = closestDroneIndex;
+      closest_RSSI = closestRSSI;
+      updateLEDBasedOnRSSI(current_drone_color, closestRSSI);
       return; // Aktualisierung vorgenommen, keine weitere Speicherung nötig
     }
   }
@@ -288,17 +288,19 @@ void storeDroneData(ReceivedDroneData receivedData) {
     int closestDroneIndex;
     float closestRSSI = 31;
     findClosestDrone(closestDroneIndex, closestRSSI);
+    //Farbe ändern wenn die näheste Drone innerhalb des Rings ist
     if (drones[droneCount].isInside && closestDroneIndex != -1) {
-      #ifdef DEBUG
-      Serial.print("Die nächste Drohne ist: ");
-      Serial.println(drones[closestDroneIndex].deviceName);
-      #endif
-      closest_drone_index = closestDroneIndex;
-      closest_RSSI = closestRSSI;
-      updateLEDBasedOnRSSI(String(drones[closestDroneIndex].deviceName).substring(6).toInt(), closestRSSI);
+      current_drone_color = String(drones[closestDroneIndex].deviceName).substring(6).toInt();
     }else if (ledWhenNoDrone) {
-        setAllLEDs(strip.Color(255, 255, 255), BRIGHTNESS);
+      setAllLEDs(strip.Color(255, 255, 255), BRIGHTNESS);
     }
+    #ifdef DEBUG
+    Serial.print("Die nächste Drohne ist: ");
+    Serial.println(drones[closestDroneIndex].deviceName);
+    #endif
+    closest_drone_index = closestDroneIndex;
+    closest_RSSI = closestRSSI;
+    updateLEDBasedOnRSSI(current_drone_color, closestRSSI);
 
     droneCount++; // Erhöhe die Drohnennummer
   }
