@@ -81,11 +81,11 @@ bool calculateIsInside(int rssiValues[]) {
 }
 
 // Funktion zur Berechnung des Mittelwerts der RSSI-Werte einer Drohne
-float calculateAverageRSSI(int rssi[3]) {
+float calculateAverageRSSI(int rssi[MAX_VALUES]) {
   int validCount = 0;
   float sum = 0;
 
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < MAX_VALUES; i++) {
     if (rssi[i] != 0) { // Nur gültige Werte einbeziehen
       sum += rssi[i];
       validCount++;
@@ -166,9 +166,11 @@ void storeDroneData(ReceivedDroneData receivedData) {
       int closestDroneIndex;
       float closestRSSI = 31;
       findClosestDrone(closestDroneIndex, closestRSSI);
-      if (closestDroneIndex != -1) {
+      if (closestDroneIndex != -1 && drones[droneCount].isInside) {
+        #ifdef DEBUG
         Serial.print("Die nächste Drohne ist: ");
         Serial.println(drones[closestDroneIndex].deviceName);
+        #endif
         closest_drone_index = closestDroneIndex;
         closest_RSSI = closestRSSI;
         updateLEDBasedOnRSSI(closestDroneIndex, closestRSSI);
@@ -202,12 +204,15 @@ void storeDroneData(ReceivedDroneData receivedData) {
     int closestDroneIndex;
     float closestRSSI = 31;
     findClosestDrone(closestDroneIndex, closestRSSI);
-    if (closestDroneIndex != -1) {
+    if (closestDroneIndex != -1 && drones[droneCount].isInside) {
+      #ifdef DEBUG
       Serial.print("Die nächste Drohne ist: ");
       Serial.println(drones[closestDroneIndex].deviceName);
+      #endif
       closest_drone_index = closestDroneIndex;
       closest_RSSI = closestRSSI;
       updateLEDBasedOnRSSI(closestDroneIndex, closestRSSI);
+      
     }
 
     droneCount++; // Erhöhe die Drohnennummer
@@ -292,10 +297,10 @@ const char* htmlPage = R"rawl(
       background-color: #f2f2f2;
     }
     .green-bg {
-      background-color: #a8e6a1; /* Grün für niedrigen RSSI */
+      background-color: #a8e6a1; // Grün für niedrigen RSSI
     }
     .red-bg {
-      background-color: #f4a8a8; /* Rot für hohen RSSI */
+      background-color: #f4a8a8; // Rot für hohen RSSI
     }
     .closest {
       background-color: lime;
@@ -316,28 +321,27 @@ const char* htmlPage = R"rawl(
           THRESHOLD_RSSI_JAVA = data.threshold;
         });
 
-    setInterval(function() {
-      fetch('/droneData')
+
+  setInterval(function() {
+    fetch('/droneData')
       .then(response => response.json())
       .then(data => {
         const tableBody = document.getElementById('droneList');
         tableBody.innerHTML = ''; // Tabelle leeren
 
-        const closestIndex = data.closest.drone_index;
-
         data.drones.forEach((drone, index) => {
           const row = document.createElement('tr');
 
-          // Bestimme die Klasse basierend auf closestIndex
-          const rowClass = (index === closestIndex) ? 'closest' : 'farther';
+          // Setze die Klasse basierend auf "closest"
+          const rowClass = (index === data.drones[0].closest.drone_index) ? 'closest' : 'farther';
+          row.className = rowClass;
 
-          // Für jeden RSSI-Wert die Hintergrundfarbe basierend auf THRESHOLD_RSSI_JAVA festlegen
+          // Bestimme die Klasse für die RSSI-Werte basierend auf THRESHOLD_RSSI_JAVA
           const rssiCells = drone.rssi.map(rssi => {
+          // Überprüfen, ob rssi einen Wert hat, sonst rot setzen
             const className = (rssi === null || rssi === undefined || rssi === 0 || rssi <= THRESHOLD_RSSI_JAVA) ? 'red-bg' : 'green-bg';
             return `<td class="${className}">${rssi || ''}</td>`;
           });
-
-          row.className = rowClass; // Setze die Zeilenklasse
 
           row.innerHTML = `<td>${drone.deviceName}</td>
                            ${rssiCells[0]}<td>${drone.count[0] || ''}</td>
@@ -371,6 +375,7 @@ const char* htmlPage = R"rawl(
 </body>
 </html>
 )rawl";
+
 
 void setup() {
   Serial.begin(115200);
