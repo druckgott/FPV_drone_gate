@@ -15,6 +15,7 @@ const char* password = "12345678";                  // Passwort des Access Point
 
 //#define THRESHOLD_RSSI -85 // Definierbarer RSSI-Grenzwert für "innerhalb des Bereichs"
 int THRESHOLD_RSSI = -85;
+int RESETINTERVAL = 50; // Intervall zwischen den Scans in Millisekunden
 
 // NeoPixel Konfiguration
 #define NUM_LEDS 150
@@ -42,13 +43,16 @@ typedef struct {
 int closest_drone_index = -1;
 int closest_RSSI = 31;
 bool ledWhenNoDrone = false; // Standardmäßig auf 'false' setzen
+unsigned long previousMillis = 0; // speichert die Zeit des letzten Scans
+unsigned long elapsedMillis = 0;  // speichert die verstrichene Zeit zwischen Scans
 
 // EEPROM Adressen festlegen
+#define EEPROM_SIZE 512                     // Gesamtgröße des EEPROM
 #define EEPROM_BRIGHTNESS_ADDR 0
-#define EEPROM_THRESHOLD_RSSI_ADDR 1
-//#define EEPROM_DISTANCE_CM_ADDR 2
-#define EEPROM_COLOR_START_ADDR 10 // Beginn der Farbspeicherung EEPROM_COLOR_START_ADDR + 10 * 4 = 50
-#define EEPROM_LED_WHEN_NO_DRONE_ADDR 50 // Adresse für Boolean-Wert
+#define EEPROM_THRESHOLD_RSSI_ADDR (EEPROM_BRIGHTNESS_ADDR + sizeof(uint8_t))
+#define EEPROM_RESET_INTERVAL_ADDR (EEPROM_THRESHOLD_RSSI_ADDR + sizeof(int))
+#define EEPROM_COLOR_START_ADDR (EEPROM_RESET_INTERVAL_ADDR + sizeof(int))
+#define EEPROM_LED_WHEN_NO_DRONE_ADDR (EEPROM_COLOR_START_ADDR + (10 * sizeof(uint32_t))) // +10 Farben
 
 // Farben für jede Drone
 uint32_t droneColors[10] = {
@@ -72,10 +76,13 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ
 ESP8266WebServer server(80);
 
 void loadConfigFromEEPROM() {
-  EEPROM.begin(512); // Initialisiere EEPROM mit 512 Byte
-  BRIGHTNESS = EEPROM.read(EEPROM_BRIGHTNESS_ADDR); // Helligkeit aus EEPROM laden
-  THRESHOLD_RSSI = EEPROM.read(EEPROM_THRESHOLD_RSSI_ADDR); // Tiefpassfilter aus EEPROM laden
-  //distance_cm = EEPROM.read(EEPROM_DISTANCE_CM_ADDR); // Entfernung aus EEPROM laden
+  EEPROM.begin(EEPROM_SIZE); // Initialisiere EEPROM mit 512 Byte
+  EEPROM.get(EEPROM_BRIGHTNESS_ADDR, BRIGHTNESS); // weil negative Werte deswegen get
+  EEPROM.get(EEPROM_THRESHOLD_RSSI_ADDR, THRESHOLD_RSSI); // weil negative Werte deswegen get
+  
+  //Serial.print("Loaded THRESHOLD_RSSI: ");
+  //Serial.println(THRESHOLD_RSSI);
+  EEPROM.get(EEPROM_RESET_INTERVAL_ADDR, RESETINTERVAL); // Entfernung aus EEPROM laden
 
   // Lade die Farben aus dem EEPROM
   for (int i = 0; i < 10; i++) {
@@ -90,6 +97,7 @@ void loadConfigFromEEPROM() {
 
 void debugEEPROMValues() {
   // Debug-Ausgabe der gewünschten Variablen
+  Serial.println("save eprom Debug:");
   Serial.print("LED When No Drone: ");
   Serial.println(ledWhenNoDrone ? "ON" : "OFF");
 
@@ -99,6 +107,9 @@ void debugEEPROMValues() {
   Serial.print("Brightness: ");
   Serial.println(BRIGHTNESS);
 
+  Serial.print("ResetInterval: ");
+  Serial.println(RESETINTERVAL);
+  
   // Farben aus dem EEPROM lesen und ausgeben
   Serial.println("Drone Colors:");
   for (int i = 0; i < 10; i++) {
@@ -110,9 +121,10 @@ void debugEEPROMValues() {
 }
 
 void saveConfigToEEPROM() {
-  EEPROM.write(EEPROM_BRIGHTNESS_ADDR, BRIGHTNESS); // Helligkeit speichern
-  EEPROM.write(EEPROM_THRESHOLD_RSSI_ADDR, THRESHOLD_RSSI); // Tiefpassfilter speichern
-  //EEPROM.write(EEPROM_DISTANCE_CM_ADDR, distance_cm); // Entfernung speichern
+  EEPROM.begin(EEPROM_SIZE); // Initialisiere EEPROM mit 512 Byte
+  EEPROM.put(EEPROM_BRIGHTNESS_ADDR, BRIGHTNESS); // Helligkeit speichern
+  EEPROM.put(EEPROM_THRESHOLD_RSSI_ADDR, THRESHOLD_RSSI); // THRESHOLD speichern (put weil auch negative Werte)
+  EEPROM.put(EEPROM_RESET_INTERVAL_ADDR, RESETINTERVAL); // Entfernung speichern
 
   // Speichere die Farben in EEPROM
   for (int i = 0; i < 10; i++) {
@@ -121,7 +133,7 @@ void saveConfigToEEPROM() {
   }
 
   // Boolean-Wert für LED-Umschaltung speichern
-  EEPROM.write(EEPROM_LED_WHEN_NO_DRONE_ADDR, ledWhenNoDrone ? 1 : 0);
+  EEPROM.put(EEPROM_LED_WHEN_NO_DRONE_ADDR, ledWhenNoDrone ? 1 : 0);
 
   EEPROM.commit(); // Änderungen im EEPROM speichern
 
@@ -178,10 +190,11 @@ void findClosestDrone(int &closestIndex, float &minAverage) {
       closestIndex = i;
     }
   }
+  //Serial.println("minAverage: " + String(minAverage) + "closestIndex " + String(closestIndex));
 }
 
-void updateLEDBasedOnRSSI(int closestDroneIndex, int closestRSSI) {
-  if (closestDroneIndex >= 0 && closestDroneIndex < 10) {
+void updateLEDBasedOnRSSI(int closestDroneID, int closestRSSI) {
+  if (closestDroneID >= 0 && closestDroneID < 10) {
     // Anzahl der leuchtenden LEDs bestimmen
     int ledCount = 0;
     
@@ -197,9 +210,7 @@ void updateLEDBasedOnRSSI(int closestDroneIndex, int closestRSSI) {
     // Setze die Farbe für die LEDs
     for (int i = 0; i < NUM_LEDS; i++) {
       if (i < ledCount) {
-        strip.setPixelColor(i, droneColors[closestDroneIndex]); // Farbe für die aktive Drohne
-      } else {
-        strip.setPixelColor(i, strip.Color(0, 0, 0)); // LEDs ausschalten
+        strip.setPixelColor(i, droneColors[closestDroneID]); // Farbe für die aktive Drohne
       }
     }
     
@@ -218,16 +229,7 @@ void storeDroneData(ReceivedDroneData receivedData) {
   else if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_03") == 0) index = 2;
 
   // Wenn das Suffix nicht gefunden wurde, abbrechen
-  if (index == -1) {
-    //je nach Config die Leds weiß schalten oder nicht 
-    //if (ledWhenNoDrone) {
-    //  #ifdef DEBUG
-    //  Serial.println("No Drone_* found.");
-    //  #endif
-    //  setAllLEDs(strip.Color(255, 255, 255), 128); // Weiß und 50% Helligkeit
-    //}
-    return;
-  }
+  if (index == -1) return;
 
   // Überprüfen, ob die Drohne bereits in der Liste ist
   for (int i = 0; i < droneCount; i++) {
@@ -240,19 +242,22 @@ void storeDroneData(ReceivedDroneData receivedData) {
       drones[i].failed_value[index] = (receivedData.rssi < THRESHOLD_RSSI) ? receivedData.rssi : 0;
       // isInside anhand der aktuellen RSSI-Werte neu berechnen
       drones[i].isInside = calculateIsInside(drones[i].rssi);
-
+      //Serial.println("insideinfo: " + String(drones[i].isInside));
       // Aktualisieren der nächstgelegenen Drohne
       int closestDroneIndex;
       float closestRSSI = 31;
       findClosestDrone(closestDroneIndex, closestRSSI);
-      if (closestDroneIndex != -1 && drones[droneCount].isInside) {
+      if (drones[i].isInside && closestDroneIndex != -1) {
         #ifdef DEBUG
         Serial.print("Die nächste Drohne ist: ");
         Serial.println(drones[closestDroneIndex].deviceName);
         #endif
         closest_drone_index = closestDroneIndex;
         closest_RSSI = closestRSSI;
-        updateLEDBasedOnRSSI(closestDroneIndex, closestRSSI);
+        updateLEDBasedOnRSSI(String(drones[closestDroneIndex].deviceName).substring(6).toInt(), closestRSSI);
+        //
+      }else if (ledWhenNoDrone) {
+        setAllLEDs(strip.Color(255, 255, 255), BRIGHTNESS);
       }
 
       return; // Aktualisierung vorgenommen, keine weitere Speicherung nötig
@@ -283,15 +288,16 @@ void storeDroneData(ReceivedDroneData receivedData) {
     int closestDroneIndex;
     float closestRSSI = 31;
     findClosestDrone(closestDroneIndex, closestRSSI);
-    if (closestDroneIndex != -1 && drones[droneCount].isInside) {
+    if (drones[droneCount].isInside && closestDroneIndex != -1) {
       #ifdef DEBUG
       Serial.print("Die nächste Drohne ist: ");
       Serial.println(drones[closestDroneIndex].deviceName);
       #endif
       closest_drone_index = closestDroneIndex;
       closest_RSSI = closestRSSI;
-      updateLEDBasedOnRSSI(closestDroneIndex, closestRSSI);
-      
+      updateLEDBasedOnRSSI(String(drones[closestDroneIndex].deviceName).substring(6).toInt(), closestRSSI);
+    }else if (ledWhenNoDrone) {
+        setAllLEDs(strip.Color(255, 255, 255), BRIGHTNESS);
     }
 
     droneCount++; // Erhöhe die Drohnennummer
@@ -518,8 +524,12 @@ void handleConfigPage() {
         <input type="number" id="brightness" name="brightness" min="0" max="255" value=")=====" + String(BRIGHTNESS) + R"=====(">
         <br><br>
 
-        <label for="thresholdrssi">thresholdrssi Value (1-100):</label>
-        <input type="number" id="thresholdrssi" name="thresholdrssi" min="1" max="100" value=")=====" + String(THRESHOLD_RSSI) + R"=====(">
+        <label for="thresholdrssi">thresholdrssi Value (-200 bis -1):</label>
+        <input type="number" id="thresholdrssi" name="thresholdrssi" min="-200" max="-1" value=")=====" + String(THRESHOLD_RSSI) + R"=====(">
+        <br><br>
+
+        <label for="resetInterval">resetInterval Intervall (1-1000ms):</label>
+        <input type="number" id="resetInterval" name="resetInterval" min="1" max="1000" value=")=====" + String(RESETINTERVAL) + R"=====(">
         <br><br>
 
         <label for="ledWhenNoDrone">Switch LED to white when no drone is detected:</label>
@@ -575,11 +585,18 @@ void handleSaveConfig() {
 
   if (server.hasArg("thresholdrssi")) {
     int thresholdrssi = server.arg("thresholdrssi").toInt();
-    if (thresholdrssi >= 1 && thresholdrssi <= 100) {
+    if (thresholdrssi >= -200 && thresholdrssi <= -1) {
       THRESHOLD_RSSI = thresholdrssi;
     }
   }
 
+  if (server.hasArg("resetInterval")) {
+    int resetInterval = server.arg("resetInterval").toInt();
+    if (resetInterval >= 1 && resetInterval <= 1000) {
+      RESETINTERVAL = resetInterval;
+    }
+  }
+  
   if (server.hasArg("ledWhenNoDrone")) {
     // Wenn die Checkbox angehakt ist, wird der Wert "1" übergeben, damit ist die variable true gesetzt
     ledWhenNoDrone = (server.arg("ledWhenNoDrone") == "1");
@@ -670,11 +687,11 @@ void setupWiFiAndServer() {
 
 
 void setup() {
-
-  loadConfigFromEEPROM(); // Lade gespeicherte Konfiguration
-
   Serial.begin(115200);
   delay(6000);
+  Serial.println("");
+
+  loadConfigFromEEPROM(); // Lade gespeicherte Konfiguration
 
   strip.begin(); // NeoPixel initialisieren
   strip.setBrightness(BRIGHTNESS);
@@ -700,4 +717,8 @@ void setup() {
 void loop() {
   // ESP-NOW arbeitet mit Callback, daher keine Logik im Haupt-Loop nötig
   server.handleClient(); // Clientanfragen bearbeiten
+  elapsedMillis = millis();
+  if (elapsedMillis - previousMillis >= (long)RESETINTERVAL) {
+      previousMillis = elapsedMillis;
+  }
 }

@@ -8,13 +8,17 @@
 
 //#define DEBUG // Kommentiere diese Zeile aus, um Debugging-Ausgaben zu deaktivieren
 
-std::string deviceSuffix = "_02";  // Definiere das Suffix, z.B. "_01", "_02", etc.
+std::string deviceSuffix = "_03";  // Definiere das Suffix, z.B. "_01", "_02", etc.
 const char* ssid = "LED_GATE_SERVER_01";           // SSID des Access Points (ESP8266)
 const char* password = "12345678";                  // Passwort des Access Points (ESP8266)
 
 // Empfänger MAC-Adresse eintragen (Beispiel MAC-Adresse, anpassen!)
-uint8_t broadcastAddress[] = {0x4A, 0x3F, 0xDA, 0x7E, 0x58, 0x9F};
-
+//nodemuc testboard
+//4A:3F:DA:7E:58:9F
+//uint8_t broadcastAddress[] = {0x4A, 0x3F, 0xDA, 0x7E, 0x58, 0x9F};
+//ESP8266 von Leadgate mit 18650
+//EE:FA:BC:12:C7:4F
+uint8_t broadcastAddress[] = {0xEE, 0xFA, 0xBC, 0x12, 0xC7, 0x4F};
 // Speichert die MAC-Adresse des ESP32
 //uint8_t esp32MacAddress[6];
 
@@ -93,12 +97,13 @@ void connectToWiFi() {
   Serial.println("Verbunden mit dem Access Point");
 }
 
+
 void setup() {
   Serial.begin(115200);
-  delay(3000);
+  delay(6000);
 
   connectToWiFi(); // WiFi-Verbindung aufbauen
-
+  
   // Gebe die MAC-Adresse des ESP32 aus
   Serial.print("MAC-Adresse des ESP32: ");
   Serial.println(WiFi.macAddress());
