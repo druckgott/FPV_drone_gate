@@ -2,7 +2,8 @@
 #include <espnow.h>
 #include <ESP8266WebServer.h>
 #include <ArduinoJson.h>
-#include <Adafruit_NeoPixel.h>
+#include <Adafruit_NeoPixel.h> // NeoPixel Bibliothek
+#include <EEPROM.h> // EEPROM für Speichern von Werten
 
 //#define DEBUG // Kommentiere diese Zeile aus, um Debugging-Ausgaben zu deaktivieren
 
@@ -12,12 +13,14 @@ const char* password = "12345678";                  // Passwort des Access Point
 #define MAX_DRONES 10  // Maximalanzahl an Drohnen, die gespeichert werden können
 #define MAX_VALUES 3   // Maximalanzahl der RSSI und Counter-Werte pro Drohne
 
-#define THRESHOLD_RSSI -85 // Definierbarer RSSI-Grenzwert für "innerhalb des Bereichs"
+//#define THRESHOLD_RSSI -85 // Definierbarer RSSI-Grenzwert für "innerhalb des Bereichs"
+int THRESHOLD_RSSI = -85;
 
 // NeoPixel Konfiguration
 #define NUM_LEDS 150
 #define LED_PIN 2          // Pin für die NeoPixel-LEDs (GPIO2, D4)
 int BRIGHTNESS = 60; // Helligkeit als Konstante definieren
+#define ENABLE_COLOR_PICKER true // Kann auf false gesetzt werden, um den Farbpicker zu deaktivieren
 
 // Struktur zum Speichern von Drohnendaten
 typedef struct {
@@ -38,6 +41,14 @@ typedef struct {
 
 int closest_drone_index = -1;
 int closest_RSSI = 31;
+bool ledWhenNoDrone = false; // Standardmäßig auf 'false' setzen
+
+// EEPROM Adressen festlegen
+#define EEPROM_BRIGHTNESS_ADDR 0
+#define EEPROM_THRESHOLD_RSSI_ADDR 1
+//#define EEPROM_DISTANCE_CM_ADDR 2
+#define EEPROM_COLOR_START_ADDR 10 // Beginn der Farbspeicherung EEPROM_COLOR_START_ADDR + 10 * 4 = 50
+#define EEPROM_LED_WHEN_NO_DRONE_ADDR 50 // Adresse für Boolean-Wert
 
 // Farben für jede Drone
 uint32_t droneColors[10] = {
@@ -59,6 +70,65 @@ int rssiThreshold = THRESHOLD_RSSI; // Speichere den Wert in einer int-Variable
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 ESP8266WebServer server(80);
+
+void loadConfigFromEEPROM() {
+  EEPROM.begin(512); // Initialisiere EEPROM mit 512 Byte
+  BRIGHTNESS = EEPROM.read(EEPROM_BRIGHTNESS_ADDR); // Helligkeit aus EEPROM laden
+  THRESHOLD_RSSI = EEPROM.read(EEPROM_THRESHOLD_RSSI_ADDR); // Tiefpassfilter aus EEPROM laden
+  //distance_cm = EEPROM.read(EEPROM_DISTANCE_CM_ADDR); // Entfernung aus EEPROM laden
+
+  // Lade die Farben aus dem EEPROM
+  for (int i = 0; i < 10; i++) {
+    int colorAddr = EEPROM_COLOR_START_ADDR + (i * sizeof(uint32_t));
+    EEPROM.get(colorAddr, droneColors[i]);
+  }
+
+  // Boolean-Wert für LED-Umschaltung laden
+  ledWhenNoDrone = EEPROM.read(EEPROM_LED_WHEN_NO_DRONE_ADDR) == 1;
+}
+
+
+void debugEEPROMValues() {
+  // Debug-Ausgabe der gewünschten Variablen
+  Serial.print("LED When No Drone: ");
+  Serial.println(ledWhenNoDrone ? "ON" : "OFF");
+
+  Serial.print("Threshold RSSI: ");
+  Serial.println(THRESHOLD_RSSI);
+  
+  Serial.print("Brightness: ");
+  Serial.println(BRIGHTNESS);
+
+  // Farben aus dem EEPROM lesen und ausgeben
+  Serial.println("Drone Colors:");
+  for (int i = 0; i < 10; i++) {
+    Serial.print("Color ");
+    Serial.print(i);
+    Serial.print(": ");
+    Serial.println(droneColors[i], HEX); // Ausgabe im Hex-Format
+  }
+}
+
+void saveConfigToEEPROM() {
+  EEPROM.write(EEPROM_BRIGHTNESS_ADDR, BRIGHTNESS); // Helligkeit speichern
+  EEPROM.write(EEPROM_THRESHOLD_RSSI_ADDR, THRESHOLD_RSSI); // Tiefpassfilter speichern
+  //EEPROM.write(EEPROM_DISTANCE_CM_ADDR, distance_cm); // Entfernung speichern
+
+  // Speichere die Farben in EEPROM
+  for (int i = 0; i < 10; i++) {
+    int colorAddr = EEPROM_COLOR_START_ADDR + (i * sizeof(uint32_t));
+    EEPROM.put(colorAddr, droneColors[i]);
+  }
+
+  // Boolean-Wert für LED-Umschaltung speichern
+  EEPROM.write(EEPROM_LED_WHEN_NO_DRONE_ADDR, ledWhenNoDrone ? 1 : 0);
+
+  EEPROM.commit(); // Änderungen im EEPROM speichern
+
+   // Debug-Ausgabe
+  debugEEPROMValues(); 
+
+}
 
 void setAllLEDs(uint32_t color, uint8_t brightness) {
     strip.setBrightness(brightness); // Setzt die Helligkeit für alle LEDs
@@ -148,7 +218,16 @@ void storeDroneData(ReceivedDroneData receivedData) {
   else if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_03") == 0) index = 2;
 
   // Wenn das Suffix nicht gefunden wurde, abbrechen
-  if (index == -1) return;
+  if (index == -1) {
+    //je nach Config die Leds weiß schalten oder nicht 
+    //if (ledWhenNoDrone) {
+    //  #ifdef DEBUG
+    //  Serial.println("No Drone_* found.");
+    //  #endif
+    //  setAllLEDs(strip.Color(255, 255, 255), 128); // Weiß und 50% Helligkeit
+    //}
+    return;
+  }
 
   // Überprüfen, ob die Drohne bereits in der Liste ist
   for (int i = 0; i < droneCount; i++) {
@@ -311,6 +390,19 @@ const char* htmlPage = R"rawl(
       background-color: yellow;
       color: black;
     }
+    .config-button {
+      margin-top: 20px; /* Space above */
+      padding: 10px 20px; /* Padding for the button */
+      font-size: 16px; /* Font size */
+      background-color: #4CAF50; /* Green background */
+      color: white; /* White text color */
+      border: none; /* No borders */
+      border-radius: 5px; /* Rounded corners */
+      cursor: pointer; /* Pointer on hover */
+    }
+    .config-button:hover {
+      background-color: #45a049; /* Darker green on hover */
+    }
   </style>
   <script>
       let THRESHOLD_RSSI_JAVA;
@@ -373,9 +465,166 @@ const char* htmlPage = R"rawl(
     </thead>
     <tbody id="droneList"></tbody>
   </table>
+  <button class="config-button" onclick="window.location.href='/config'">Configuration</button>
+  <button class="config-button" target="_blank" onclick="window.location.href='/droneData'">RAW_DATA</button>
 </body>
 </html>
 )rawl";
+
+// Web server handler for the configuration page
+void handleConfigPage() {
+    String html = R"=====(
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Configuration</title>
+      <style>
+        body {
+          background-color: #f0f0f0;
+          font-family: Arial, sans-serif;
+          color: black;
+        }
+        input[type="number"] {
+          width: 50px; /* Width for number fields */
+        }
+        input[type="text"] {
+          width: 80px; /* Width for hex value input fields */
+        }
+      </style>
+      <script>
+        function updateHexValue(colorInput, hexInput) {
+            document.getElementById(hexInput).value = colorInput.value;
+        }
+        
+        function resetColors() {
+            // Reset to default colors
+            const defaultColors = [
+                "#FF0000", "#FFFF00", "#00FF00", "#0000FF", 
+                "#FF00FF", "#00FFFF", "#FFA500", "#800080", 
+                "#4bb7d6", "#808080"
+            ];
+            for (let i = 0; i < 10; i++) {
+                document.getElementById("drone_0" + (i + 1)).value = defaultColors[i];
+                document.getElementById("drone_0" + (i + 1) + "_hex").value = defaultColors[i];
+            }
+        }
+      </script>
+    </head>
+    <body>
+      <h1>LED Configuration</h1>
+      <form action="/saveConfig" method="POST">
+        <label for="brightness">LED Brightness (0-255):</label>
+        <input type="number" id="brightness" name="brightness" min="0" max="255" value=")=====" + String(BRIGHTNESS) + R"=====(">
+        <br><br>
+
+        <label for="thresholdrssi">thresholdrssi Value (1-100):</label>
+        <input type="number" id="thresholdrssi" name="thresholdrssi" min="1" max="100" value=")=====" + String(THRESHOLD_RSSI) + R"=====(">
+        <br><br>
+
+        <label for="ledWhenNoDrone">Switch LED to white when no drone is detected:</label>
+        <input type="checkbox" id="ledWhenNoDrone" name="ledWhenNoDrone")=====" + (ledWhenNoDrone ? "checked" : "") + R"=====( value="1">
+        <br><br>
+
+        )=====";
+
+#if ENABLE_COLOR_PICKER
+    html += "<label for=\"color\">Color selection for drones:</label><br>";
+
+    for (int i = 0; i < 10; i++) {
+        String droneName = "drone_0" + String(i + 1);
+        String hexColor = String(droneColors[i], HEX);
+
+        // Add leading zeros to ensure the value is 6 digits
+        while (hexColor.length() < 6) {
+            hexColor = "0" + hexColor; 
+        }
+        hexColor = "#" + hexColor; // Prepend '#' for the color selection
+
+        html += "<label for=\"" + droneName + "\">Drone_0" + String(i + 1) + " (Colors):</label>";
+        html += "<input type=\"color\" id=\"" + droneName + "\" name=\"" + droneName + "\" value=\"" + hexColor + "\" onchange=\"updateHexValue(this, '" + droneName + "_hex')\">";
+        html += "<input type=\"text\" id=\"" + droneName + "_hex\" name=\"" + droneName + "_hex\" value=\"" + hexColor + "\"><br>";
+        //html += "<span>Current value: " + hexColor + "</span><br>";
+    }
+
+    html += "<br><br>";
+#endif
+
+    // Button to reset colors
+    html += "<input type=\"button\" value=\"Reset colors\" onclick=\"resetColors()\"><br><br>";
+
+    html += R"=====(
+        <input type="submit" value="Save">
+        <input type="button" value="Back" onclick="window.location.href='/'">
+      </form>
+    </body>
+    </html>
+    )=====";
+
+    server.send(200, "text/html", html);
+}
+
+// Webserver Handler für das Speichern der Konfiguration
+void handleSaveConfig() {
+  if (server.hasArg("brightness")) {
+    int brightness = server.arg("brightness").toInt();
+    if (brightness >= 0 && brightness <= 255) {
+      BRIGHTNESS = brightness;
+    }
+  }
+
+  if (server.hasArg("thresholdrssi")) {
+    int thresholdrssi = server.arg("thresholdrssi").toInt();
+    if (thresholdrssi >= 1 && thresholdrssi <= 100) {
+      THRESHOLD_RSSI = thresholdrssi;
+    }
+  }
+
+  if (server.hasArg("ledWhenNoDrone")) {
+    // Wenn die Checkbox angehakt ist, wird der Wert "1" übergeben, damit ist die variable true gesetzt
+    ledWhenNoDrone = (server.arg("ledWhenNoDrone") == "1");
+  } else {
+    // Wenn das Argument fehlt, ist die Checkbox nicht angehakt, setze ledWhenNoDrone auf false
+    ledWhenNoDrone = false;
+  }
+
+#if ENABLE_COLOR_PICKER
+    for (int i = 0; i < 10; i++) {
+        String hexFieldName = "drone_0" + String(i + 1) + "_hex"; // Name des Textfelds für den Hex-Wert
+        if (server.hasArg(hexFieldName)) {
+            String hexValue = server.arg(hexFieldName); // Hole den Hex-Wert als String
+
+            // Überprüfen, ob das '#' am Anfang steht und nur die letzten 6 Zeichen für RGB verwenden
+            if (hexValue.startsWith("#")) {
+                hexValue = hexValue.substring(1); // Entferne das '#'
+            }
+
+            // Stellen Sie sicher, dass der Hex-Wert 6 Zeichen hat, indem Sie führende Nullen hinzufügen
+            while (hexValue.length() < 6) {
+                hexValue = "0" + hexValue; // Fügen Sie führende Nullen hinzu
+            }
+
+            // Stelle sicher, dass der Hex-Wert 6 Zeichen hat
+            if (hexValue.length() == 6) {
+                droneColors[i] = strtol(hexValue.c_str(), NULL, 16); // Konvertiere in Ganzzahl
+            } else {
+                Serial.println("Invalid hex value for Drone " + String(i + 1) + ": " + hexValue); // Error log
+            }
+            #if DEBUG
+            Serial.println("Drone " + String(i + 1) + " Color: " + String(droneColors[i], HEX)); // Debugging
+            #endif
+        } else {
+            Serial.println("No argument found for Drone " + String(i + 1)); // Error log when the argument is missing
+        }
+    }
+#endif
+
+  saveConfigToEEPROM(); // Konfiguration ins EEPROM speichern
+  
+  // Umleitung zur Konfigurationsseite
+  server.sendHeader("Location", "/config"); // Hier "config" sollte der Pfad zur Konfigurationsseite sein
+  server.send(303); // HTTP 303 See Other
+}
 
 // Funktion zur Initialisierung des WLAN-AP und des Webservers
 void setupWiFiAndServer() {
@@ -410,6 +659,10 @@ void setupWiFiAndServer() {
   server.send(200, "application/json", json);
   });
 
+  // Neue Routen für Konfigurationsseite
+  server.on("/config", handleConfigPage);
+  server.on("/saveConfig", HTTP_POST, handleSaveConfig);
+
   server.begin();
   Serial.println("Webserver gestartet");
 
@@ -417,6 +670,9 @@ void setupWiFiAndServer() {
 
 
 void setup() {
+
+  loadConfigFromEEPROM(); // Lade gespeicherte Konfiguration
+
   Serial.begin(115200);
   delay(6000);
 
