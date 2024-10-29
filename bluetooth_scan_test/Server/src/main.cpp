@@ -2,7 +2,7 @@
 #include <espnow.h>
 #include <ESP8266WebServer.h>
 #include <ArduinoJson.h>
-#include <Adafruit_NeoPixel.h> // NeoPixel Bibliothek
+#include <Adafruit_NeoPixel.h>
 
 //#define DEBUG // Kommentiere diese Zeile aus, um Debugging-Ausgaben zu deaktivieren
 
@@ -57,8 +57,8 @@ DroneData drones[MAX_DRONES];  // Array zum Speichern von Drohnendaten
 int droneCount = 0;             // Zähler für die Anzahl der gespeicherten Drohnen
 int rssiThreshold = THRESHOLD_RSSI; // Speichere den Wert in einer int-Variable
 
-ESP8266WebServer server(80);
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
+ESP8266WebServer server(80);
 
 void setAllLEDs(uint32_t color, uint8_t brightness) {
     strip.setBrightness(brightness); // Setzt die Helligkeit für alle LEDs
@@ -282,6 +282,7 @@ const char* htmlPage = R"rawl(
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <title>Drone Data</title>
   <style>
     table {
@@ -376,10 +377,8 @@ const char* htmlPage = R"rawl(
 </html>
 )rawl";
 
-
-void setup() {
-  Serial.begin(115200);
-  delay(6000);
+// Funktion zur Initialisierung des WLAN-AP und des Webservers
+void setupWiFiAndServer() {
 
   // AP-Modus starten
   WiFi.softAP(ssid, password);
@@ -392,22 +391,6 @@ void setup() {
   // IP-Adresse des Access Points ausgeben
   Serial.print("IP-Adresse: ");
   Serial.println(WiFi.softAPIP());
-
-  strip.begin(); // NeoPixel initialisieren
-  strip.setBrightness(BRIGHTNESS);
-  strip.show(); // Sicherstellen, dass die LEDs zu Beginn ausgeschaltet sind
-
-  // ESP-NOW initialisieren
-  if (esp_now_init() != 0) {
-    Serial.println("Fehler bei der Initialisierung von ESP-NOW");
-    return;
-  }
-
-  // Callback für empfangene Daten registrieren
-  esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
-  esp_now_register_recv_cb(onDataRecv);
-
-  Serial.println("Warte auf ESP-NOW-Nachrichten...");
 
   // Webserver-Routen
   server.on("/", []() {
@@ -429,6 +412,33 @@ void setup() {
 
   server.begin();
   Serial.println("Webserver gestartet");
+
+}
+
+
+void setup() {
+  Serial.begin(115200);
+  delay(6000);
+
+  strip.begin(); // NeoPixel initialisieren
+  strip.setBrightness(BRIGHTNESS);
+  strip.show(); // Sicherstellen, dass die LEDs zu Beginn ausgeschaltet sind
+
+  // WLAN und Webserver einrichten
+  setupWiFiAndServer();
+
+  // ESP-NOW initialisieren
+  if (esp_now_init() != 0) {
+    Serial.println("Fehler bei der Initialisierung von ESP-NOW");
+    return;
+  }
+
+  // Callback für empfangene Daten registrieren
+  esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
+  esp_now_register_recv_cb(onDataRecv);
+
+  Serial.println("Warte auf ESP-NOW-Nachrichten...");
+
 }
 
 void loop() {
