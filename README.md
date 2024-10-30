@@ -25,3 +25,7 @@
 * Fußbodenheitungsrohr mit LED Streifen breite 5 mm WS2812B LED´s, 60Leds pro Meter
 * 3D Druck Aufnahme
 * ESP-Wroom-02 mit 18650 Zelle
+
+# Idea with bluetooth for getting better position:
+* Currently the problem is the sending speed between the 3 esp32-c3 and the main esp8622.
+![config screenshot](bluetooth_scan_test/hardware.png) 
