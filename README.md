@@ -2,29 +2,29 @@
 
 ![config screenshot](ledgate/img/Config.png)
 
-# LED-Anschluss: 
-* Am FPV Drone Gate können über den D4 Pin (GPIO2) LEDs angeschlossen werden.
+# LED Connection:
+* LEDs can be connected to the FPV Drone Gate via the D4 pin (GPIO2).
 
-# Hotspot-Scan: 
-* Das Gate scannt nach anderen Hotspots mit den Namen Drone_XX, bis maximal 10 Drones gefunden werden.
+# Hotspot Scan:
+* The gate scans for other hotspots with names like Drone_XX, up to a maximum of 10 drones.
 
 # ESP8266 in Gate:
-* Der ESP ist über die IP 192.168.4.1 erreichbar nachdem sich mit dem AP verbunden wurde. AP: DRONE_GATE_01, PW: 12345678 --> hier muss gebenfalls bei mehreren Gates der Zähler der SSID angepasst werden, dieser befindet sich im oberen Bereich des Codes.
+* The ESP can be accessed at IP 192.168.4.1 after connecting to the AP. AP: DRONE_GATE_01, PW: 12345678 --> if there are multiple gates, the SSID counter must be adjusted, which can be found at the top of the code.
 
-# ESP8266 in Drones: 
-* Auf jeder Drone kann ein ESP8266 verbaut sein. Dieser wird gescannt, ohne eine Verbindung aufzubauen, um den Ablauf zu beschleunigen. Es ist nur eine Stromverbindung für den ESP in der Drohne notwendig, nachdem die Software geflashed wurde.
-* Der ESP ist über die IP 192.168.4.1 erreichbar nachdem sich mit dem AP verbunden wurde. AP: DRONE_XX, PW: 12345678
+# ESP8266 in Drones:
+* Each drone can be equipped with an ESP8266. This will be scanned without establishing a connection to speed up the process. Only a power connection for the ESP in the drone is required after flashing the software.
+* The ESP can be accessed at IP 192.168.4.1 after connecting to the AP. AP: DRONE_XX, PW: 12345678
 
-# LED-Farbauswahl: 
-* Für jede Drone kann eine individuelle LED-Farbe ausgewählt werden. Basierend auf dem RSSI-Signal wird die LED-Farbe des Gates auf die Farbe der Drone eingestellt, die den niedrigsten RSSI-Wert hat.
+# LED Color Selection:
+* An individual LED color can be selected for each drone. Based on the RSSI signal, the LED color of the gate is set to the color of the drone with the lowest RSSI value.
 
-# Zusätzliche Konfigurationen: 
-* Es sind einige weitere grundlegende Konfigurationen möglich, um die Benutzererfahrung zu optimieren.
+# Additional Configurations:
+* Some additional basic configurations are possible to optimize the user experience.
 
-# Aufbau des Gates:
-* Fußbodenheitungsrohr mit LED Streifen breite 5 mm WS2812B LED´s, 60Leds pro Meter
-* 3D Druck Aufnahme
-* ESP-Wroom-02 mit 18650 Zelle
+# Gate Setup:
+* Underfloor heating pipe with LED strip width 5 mm WS2812B LEDs, 60 LEDs per meter
+* 3D printed holder
+* ESP-Wroom-02 with 18650 cell
 
 # Idea for Improving Positioning Accuracy with Bluetooth: 
 * Currently, the issue is the transmission speed between the three ESP32-C3 devices and the main Esp8266, if there is more then one esp32 c3 connected to the Server. If only one seatellit is connected the speed is very well. 
