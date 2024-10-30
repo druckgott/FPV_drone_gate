@@ -260,15 +260,15 @@ void updateDroneStatus(int &closestDroneIndex, float &closestRSSI) {
 // Funktion zum Speichern oder Aktualisieren empfangener Daten
 void storeDroneData(ReceivedDroneData receivedData) {
   // Extrahiere das Suffix, um den RSSI/Count-Index zu bestimmen
-  printElapsedTime("Start storeDroneData loop");
+  //printElapsedTime("Start storeDroneData loop");
 
   int index = -1;
-  /*if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_01") == 0) index = 0;
+  if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_01") == 0) index = 0;
   else if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_02") == 0) index = 1;
-  else if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_03") == 0) index = 2;*/
+  else if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_03") == 0) index = 2;
 
       // Extrahiere den Suffix von deviceName
-    const char* suffix = &receivedData.deviceName[strlen(receivedData.deviceName) - 3];
+  /*const char* suffix = &receivedData.deviceName[strlen(receivedData.deviceName) - 3];
 
     // Prüfen, ob der empfangene Suffix mit dem aktuellen Index übereinstimmt
   if (strcmp(suffix, "_01") == 0 && currentIndex == 0) {
@@ -280,9 +280,8 @@ void storeDroneData(ReceivedDroneData receivedData) {
   } else if (strcmp(suffix, "_03") == 0 && currentIndex == 2) {
       currentIndex = 0; // Nächster ESP zur Abfrage ist _01
       index = 2;
-  }
-
-  printElapsedTime("Index: " + String(index));
+  }*/
+  //printElapsedTime("Index: " + String(index));
   // Wenn das Suffix nicht gefunden wurde, abbrechen
   if (index == -1) return;
 
@@ -369,21 +368,24 @@ void storeDroneData(ReceivedDroneData receivedData) {
 
 }
 
+// Flag, um die Verarbeitung zu blockieren
+volatile bool isProcessing = false;
+
 // Callback-Funktion für den Empfang von ESP-NOW-Daten
 void onDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len) {
   ReceivedDroneData receivedData;
   memcpy(&receivedData, incomingData, sizeof(receivedData));
-
-  //#ifdef DEBUG
+  #ifdef DEBUG
   Serial.print("Daten empfangen von: ");
   for (int i = 0; i < 6; i++) {
       Serial.printf("%02X", mac[i]);
       if (i < 5) Serial.print(":");
   }
   Serial.printf(" | Gerätename: %s | RSSI: %d | Counter: %d\n", receivedData.deviceName, receivedData.rssi, receivedData.count);
-  //#endif
+  #endif
   // Drohne zu den Daten hinzufügen oder aktualisieren
   storeDroneData(receivedData);
+
 }
 
 // Funktion zum Erstellen des JSON-Dokuments für die Drohnendaten
