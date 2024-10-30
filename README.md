@@ -26,6 +26,8 @@
 * 3D Druck Aufnahme
 * ESP-Wroom-02 mit 18650 Zelle
 
-# Idea with bluetooth for getting better position:
-* Currently the problem is the sending speed between the 3 esp32-c3 and the main esp8622.
+# Idea for Improving Positioning Accuracy with Bluetooth: 
+* Currently, the issue is the transmission speed between the three ESP32-C3 devices and the main ESP8266.
 ![config screenshot](bluetooth_scan_test/hardware.png) 
+Testversion:
+https://github.com/druckgott/FPV_drone_gate/tree/main/bluetooth_scan_test
