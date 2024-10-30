@@ -72,7 +72,7 @@ uint32_t droneColors[10] = {
 DroneData drones[MAX_DRONES];  // Array zum Speichern von Drohnendaten
 int droneCount = 0;             // Zähler für die Anzahl der gespeicherten Drohnen
 int rssiThreshold = THRESHOLD_RSSI; // Speichere den Wert in einer int-Variable
-
+int currentIndex = 0; // Starte mit dem ersten ESP der Daten sendet
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 ESP8266WebServer server(80);
 
@@ -143,6 +143,14 @@ void saveConfigToEEPROM() {
 
 }
 
+void printElapsedTime(const String& name) {
+  Serial.print("Time Output (");
+  Serial.print(name);
+  Serial.print("): ");
+  Serial.print(elapsedMillis);
+  Serial.println(" ms");
+}
+
 void setAllLEDs(uint32_t color, uint8_t brightness) {
     strip.setBrightness(brightness); // Setzt die Helligkeit für alle LEDs
     
@@ -154,14 +162,14 @@ void setAllLEDs(uint32_t color, uint8_t brightness) {
 }
 
 // Funktion zur Berechnung, ob eine Drohne innerhalb des Bereichs ist
-bool calculateIsInside(int rssiValues[]) {
+/*bool calculateIsInside(int rssiValues[]) {
   for (int i = 0; i < MAX_VALUES; i++) {
     if (rssiValues[i] < THRESHOLD_RSSI || rssiValues[i] >= 0) {
       return false;  // Außerhalb des Bereichs
     }
   }
   return true; // Innerhalb des Bereichs
-}
+}*/
 
 // Funktion zur Berechnung des Mittelwerts der RSSI-Werte einer Drohne
 float calculateAverageRSSI(int rssi[MAX_VALUES]) {
@@ -179,7 +187,7 @@ float calculateAverageRSSI(int rssi[MAX_VALUES]) {
 }
 
 // Funktion zur Identifizierung der Drohne mit dem niedrigsten RSSI-Mittelwert
-void findClosestDrone(int &closestIndex, float &minAverage) {
+/*void findClosestDrone(int &closestIndex, float &minAverage) {
   minAverage = -200; // Startwert für minAverage, da RSSI negativ ist
   closestIndex = -1;
 
@@ -191,7 +199,7 @@ void findClosestDrone(int &closestIndex, float &minAverage) {
       closestIndex = i;
     }
   }
-}
+}*/
 
 void updateLEDBasedOnRSSI(int closestDroneID, int closestRSSI) {
   if (closestDroneID >= 0 && closestDroneID < 10) {
@@ -221,18 +229,65 @@ void updateLEDBasedOnRSSI(int closestDroneID, int closestRSSI) {
   }
 }
 
+void updateDroneStatus(int &closestDroneIndex, float &closestRSSI) {
+  closestRSSI = -200;  // Startwert, da RSSI negativ ist
+  closestDroneIndex = -1;
+
+  for (int i = 0; i < droneCount; i++) {
+    float avgRSSI = 0;
+    bool isInside = true;
+
+    // Durchschnitts-RSSI berechnen und prüfen, ob innerhalb des Bereichs
+    for (int j = 0; j < MAX_VALUES; j++) {
+      avgRSSI += drones[i].rssi[j];
+
+      if (drones[i].rssi[j] < THRESHOLD_RSSI || drones[i].rssi[j] >= 0) {
+        isInside = false; // Drohne ist außerhalb des Bereichs
+      }
+    }
+
+    avgRSSI /= MAX_VALUES; // Durchschnitt berechnen
+    drones[i].isInside = isInside;
+
+    // Nächstgelegene Drohne aktualisieren
+    if (avgRSSI > closestRSSI && avgRSSI < 0) {
+      closestRSSI = avgRSSI;
+      closestDroneIndex = i;
+    }
+  }
+}
+
 // Funktion zum Speichern oder Aktualisieren empfangener Daten
 void storeDroneData(ReceivedDroneData receivedData) {
   // Extrahiere das Suffix, um den RSSI/Count-Index zu bestimmen
-  int index = -1;
-  if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_01") == 0) index = 0;
-  else if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_02") == 0) index = 1;
-  else if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_03") == 0) index = 2;
+  printElapsedTime("Start storeDroneData loop");
 
+  int index = -1;
+  /*if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_01") == 0) index = 0;
+  else if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_02") == 0) index = 1;
+  else if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_03") == 0) index = 2;*/
+
+      // Extrahiere den Suffix von deviceName
+    const char* suffix = &receivedData.deviceName[strlen(receivedData.deviceName) - 3];
+
+    // Prüfen, ob der empfangene Suffix mit dem aktuellen Index übereinstimmt
+  if (strcmp(suffix, "_01") == 0 && currentIndex == 0) {
+      currentIndex = 1; // Nächster ESP zur Abfrage ist _02
+      index = 0;
+  } else if (strcmp(suffix, "_02") == 0 && currentIndex == 1) {
+      currentIndex = 2; // Nächster ESP zur Abfrage ist _03
+      index = 1;
+  } else if (strcmp(suffix, "_03") == 0 && currentIndex == 2) {
+      currentIndex = 0; // Nächster ESP zur Abfrage ist _01
+      index = 2;
+  }
+
+  printElapsedTime("Index: " + String(index));
   // Wenn das Suffix nicht gefunden wurde, abbrechen
   if (index == -1) return;
 
   // Überprüfen, ob die Drohne bereits in der Liste ist
+  //printElapsedTime("Start drone loop");
   for (int i = 0; i < droneCount; i++) {
     if (strncmp(drones[i].deviceName, receivedData.deviceName, 8) == 0) {
       // Neuen RSSI- und Counter-Wert an der bestimmten Position speichern
@@ -241,18 +296,22 @@ void storeDroneData(ReceivedDroneData receivedData) {
 
       // failed_value aktualisieren, falls der RSSI-Wert den Schwellenwert nicht erreicht
       drones[i].failed_value[index] = (receivedData.rssi < THRESHOLD_RSSI) ? receivedData.rssi : 0;
+      //printElapsedTime("Datenempfang beendet");
       // isInside anhand der aktuellen RSSI-Werte neu berechnen
-      drones[i].isInside = calculateIsInside(drones[i].rssi);
+      //drones[i].isInside = calculateIsInside(drones[i].rssi);
       // Aktualisieren der nächstgelegenen Drohne
       int closestDroneIndex;
       float closestRSSI = 31;
-      findClosestDrone(closestDroneIndex, closestRSSI);
+      // Aufruf der neuen Funktion
+      updateDroneStatus(closestDroneIndex, closestRSSI);
+      //printElapsedTime("Update Status beendet");
       //Farbe ändern wenn die näheste Drone innerhalb des Rings ist
       if (drones[i].isInside && closestDroneIndex != -1) {
         current_drone_color = String(drones[closestDroneIndex].deviceName).substring(6).toInt();
       }else if (ledWhenNoDrone) {
         setAllLEDs(strip.Color(255, 255, 255), BRIGHTNESS);
       }
+      //printElapsedTime("Update Farbe Led beendet");
       #ifdef DEBUG
       Serial.print("Die nächste Drohne ist: ");
       Serial.println(drones[closestDroneIndex].deviceName);
@@ -260,10 +319,12 @@ void storeDroneData(ReceivedDroneData receivedData) {
       closest_drone_index = closestDroneIndex;
       closest_RSSI = closestRSSI;
       updateLEDBasedOnRSSI(current_drone_color, closestRSSI);
+      //printElapsedTime("Update RSSI Led beendet");
       return; // Aktualisierung vorgenommen, keine weitere Speicherung nötig
     }
   }
-
+  //printElapsedTime("Ende drone loop");
+  //printElapsedTime("Start first drone loop");
   // Wenn die Drohne noch nicht gespeichert ist, füge sie hinzu
   if (droneCount < MAX_DRONES) {
     // Kopiere die ersten 8 Zeichen von receivedData.deviceName
@@ -280,14 +341,14 @@ void storeDroneData(ReceivedDroneData receivedData) {
     // failed_value initialisieren
     drones[droneCount].failed_value[index] = (receivedData.rssi < THRESHOLD_RSSI) ? receivedData.rssi : 0;
     // Berechne den isInside-Status bei erstmaligem Hinzufügen
-    drones[droneCount].isInside = calculateIsInside(drones[droneCount].rssi);
-    
-    drones[droneCount].currentIndex = 1; // Setze den aktuellen Index auf 1
-    
+    //drones[droneCount].isInside = calculateIsInside(drones[droneCount].rssi);
     // Aktualisieren der nächstgelegenen Drohne
     int closestDroneIndex;
     float closestRSSI = 31;
-    findClosestDrone(closestDroneIndex, closestRSSI);
+    //findClosestDrone(closestDroneIndex, closestRSSI);
+    // Aufruf der neuen Funktion
+    updateDroneStatus(closestDroneIndex, closestRSSI);
+    drones[droneCount].currentIndex = 1; // Setze den aktuellen Index auf 1
     //Farbe ändern wenn die näheste Drone innerhalb des Rings ist
     if (drones[droneCount].isInside && closestDroneIndex != -1) {
       current_drone_color = String(drones[closestDroneIndex].deviceName).substring(6).toInt();
@@ -304,6 +365,7 @@ void storeDroneData(ReceivedDroneData receivedData) {
 
     droneCount++; // Erhöhe die Drohnennummer
   }
+  //printElapsedTime("Ende first drone loop");
 
 }
 
@@ -312,14 +374,14 @@ void onDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len) {
   ReceivedDroneData receivedData;
   memcpy(&receivedData, incomingData, sizeof(receivedData));
 
-  #ifdef DEBUG
+  //#ifdef DEBUG
   Serial.print("Daten empfangen von: ");
   for (int i = 0; i < 6; i++) {
       Serial.printf("%02X", mac[i]);
       if (i < 5) Serial.print(":");
   }
   Serial.printf(" | Gerätename: %s | RSSI: %d | Counter: %d\n", receivedData.deviceName, receivedData.rssi, receivedData.count);
-  #endif
+  //#endif
   // Drohne zu den Daten hinzufügen oder aktualisieren
   storeDroneData(receivedData);
 }
@@ -330,7 +392,7 @@ String getDroneDataJson() {
   
   // Verwende jsonDoc["drones"].to<JsonArray>() anstelle von createNestedArray
   JsonArray jsonDrones = jsonDoc["drones"].to<JsonArray>();
-
+  //printElapsedTime("Start webside loop");
   for (int i = 0; i < droneCount; i++) {
     // Verwende jsonDrones.add<JsonObject>() anstelle von createNestedObject
     JsonObject drone = jsonDrones.add<JsonObject>();
@@ -357,7 +419,7 @@ String getDroneDataJson() {
     drone["closest"]["drone_index"] = closest_drone_index;
     drone["closest"]["rssi"] = closest_RSSI;
   }
-
+  //printElapsedTime("Ende webside loop");
   String json;
   serializeJson(jsonDoc, json);
   
@@ -723,4 +785,6 @@ void loop() {
   if (elapsedMillis - previousMillis >= (long)RESETINTERVAL) {
       previousMillis = elapsedMillis;
   }
+
+
 }
