@@ -27,7 +27,7 @@
 * ESP-Wroom-02 mit 18650 Zelle
 
 # Idea for Improving Positioning Accuracy with Bluetooth: 
-* Currently, the issue is the transmission speed between the three ESP32-C3 devices and the main ESP8266.
+* Currently, the issue is the transmission speed between the three ESP32-C3 devices and the main Esp8266, if there is more then one esp32 c3 connected to the Server. If only one seatellit is connected the speed is very well. 
 ![config screenshot](bluetooth_scan_test/hardware.png) 
 Testversion:
 https://github.com/druckgott/FPV_drone_gate/tree/main/bluetooth_scan_test
