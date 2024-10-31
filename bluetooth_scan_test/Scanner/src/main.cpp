@@ -8,7 +8,7 @@
 
 //#define DEBUG // Kommentiere diese Zeile aus, um Debugging-Ausgaben zu deaktivieren
 
-std::string deviceSuffix = "_03";  // Definiere das Suffix, z.B. "_01", "_02", etc.
+std::string deviceSuffix = "_01";  // Definiere das Suffix, z.B. "_01", "_02", etc.
 const char* ssid = "LED_GATE_SERVER_01";           // SSID des Access Points (ESP8266)
 const char* password = "12345678";                  // Passwort des Access Points (ESP8266)
 
@@ -19,21 +19,39 @@ const char* password = "12345678";                  // Passwort des Access Point
 //ESP8266 von Leadgate mit 18650
 //EE:FA:BC:12:C7:4F
 uint8_t broadcastAddress[] = {0xEE, 0xFA, 0xBC, 0x12, 0xC7, 0x4F};
-// Speichert die MAC-Adresse des ESP32
-//uint8_t esp32MacAddress[6];
 
 typedef struct {
   char deviceName[32];
   int rssi;
   int count; // Zähler hinzufügen
-  //uint8_t macAddress[6]; // Array zur Speicherung der MAC-Adresse
 } DroneData;
 
 DroneData droneData;
 int count = 0; // Zählervariable
 
+bool canSend = false;
+
+void onDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+      // Print the MAC address of the sender
+    Serial.print("Daten empfangen von: ");
+    for (int i = 0; i < 6; i++) {
+        Serial.printf("%02X", mac[i]);
+        if (i < 5) Serial.print(":");
+    }
+    Serial.print(", Länge: ");
+    Serial.println(len);
+
+    // Check if the incoming data matches the expected length and content
+    if (len == 4 && memcmp(incomingData, "SEND", 4) == 0) {
+        canSend = true;
+        Serial.println("Befehl 'SEND' empfangen. canSend auf true gesetzt.");
+    } else {
+        Serial.println("Unerwartete Daten empfangen.");
+    }
+}
+
 // Callback-Funktion für ESP-NOW-Sendebestätigung
-void onSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   #ifdef DEBUG
   Serial.print("Sende-Status: ");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Erfolgreich" : "Fehlgeschlagen");
@@ -46,7 +64,8 @@ void initESPNow() {
     Serial.println("Fehler bei der Initialisierung von ESP-NOW");
     return;
   }
-  esp_now_register_send_cb(onSent);
+  esp_now_register_recv_cb(onDataRecv);           // Callback für den Empfang registrieren
+  esp_now_register_send_cb(onDataSent);           // Callback für den Versand registrieren
 }
 
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
@@ -117,10 +136,10 @@ void setup() {
 
   // Empfänger hinzufügen
   esp_now_peer_info_t peerInfo;
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  memcpy(peerInfo.peer_addr, broadcastAddress, 0);
   peerInfo.channel = 0;  
-  peerInfo.encrypt = false;
-  
+  peerInfo.encrypt = NULL;
+
   if (esp_now_add_peer(&peerInfo) != ESP_OK) {
     Serial.println("Fehler beim Hinzufügen des Peers");
     return;
@@ -139,6 +158,22 @@ void setup() {
   pBLEScan->setWindow(32);        // Scan-Fenster in 0.625ms-Einheiten
 }
 
+// Beispiel-Funktion zum Senden der Daten
+void sendESPNowData() {
+  // Implementieren Sie hier, welche Daten gesendet werden sollen
+    // Zähler hochzählen
+  count++;
+  if (count > 10000) {
+    count = 0; // Zähler zurücksetzen
+  }
+  Serial.println("Darf senden... " + String(count));
+  // Starte den Scan ohne zeitliche Begrenzung und bereinige die Ergebnisse direkt danach
+  BLEDevice::getScan()->start(0.1, true); // kurzer Scan, um wiederholte Ergebnisse zu ermöglichen
+
+  BLEDevice::getScan()->clearResults();    // Bereinige die Ergebnisse sofort für den nächsten Scan
+  //Serial.println("Daten werden gesendet...");
+}
+
 void loop() {
 
   // Überprüfe die WiFi-Verbindung
@@ -146,14 +181,14 @@ void loop() {
     Serial.println("Verbindung verloren. Versuche, erneut zu verbinden...");
     connectToWiFi(); // WiFi erneut verbinden
   }
-  // Zähler hochzählen
-  count++;
-  if (count > 10000) {
-    count = 0; // Zähler zurücksetzen
+  if (canSend) {
+    Serial.println("Darf senden... ");
+    // Daten senden
+    sendESPNowData();
+    // Senden deaktivieren, bis der Server wieder ein „SEND“-Signal sendet
+    
+    canSend = false;
   }
 
-  // Starte den Scan ohne zeitliche Begrenzung und bereinige die Ergebnisse direkt danach
-  BLEDevice::getScan()->start(0.1, true); // kurzer Scan, um wiederholte Ergebnisse zu ermöglichen
 
-  BLEDevice::getScan()->clearResults();    // Bereinige die Ergebnisse sofort für den nächsten Scan
 }

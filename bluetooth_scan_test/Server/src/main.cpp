@@ -5,10 +5,24 @@
 #include <Adafruit_NeoPixel.h> // NeoPixel Bibliothek
 #include <EEPROM.h> // EEPROM für Speichern von Werten
 
+//info: https://www.digikey.at/en/maker/tutorials/2024/how-to-implement-two-way-communication-in-esp-now
 //#define DEBUG // Kommentiere diese Zeile aus, um Debugging-Ausgaben zu deaktivieren
 
 const char* ssid = "LED_GATE_SERVER_01";           // SSID des Access Points
 const char* password = "12345678";                  // Passwort des Access Points
+int CHANNEL;
+
+const uint8_t senderIDs[][6] = {
+  {0x3C, 0x84, 0x27, 0xAF, 0x19, 0x48}, // 3C:84:27:AF:19:48 von Sender 1
+  {0xD8, 0x3B, 0xDA, 0x34, 0xAE, 0x20}, // D8:3B:DA:34:AE:20 von Sender 2
+  {0xD8, 0x3B, 0xDA, 0x32, 0x0C, 0xC0}, // D8:3B:DA:32:0C:C0 von Sender 3
+  // Fügen Sie weitere Sender-MAC-Adressen hinzu
+};
+
+int currentSenderIndex = 0;  // Aktueller Sender
+unsigned long interval = 200; // Zeitintervall für jeden Sender
+unsigned long lastSwitchTime = 0;
+
 
 #define MAX_DRONES 10  // Maximalanzahl an Drohnen, die gespeichert werden können
 #define MAX_VALUES 3   // Maximalanzahl der RSSI und Counter-Werte pro Drohne
@@ -371,21 +385,37 @@ void storeDroneData(ReceivedDroneData receivedData) {
 // Flag, um die Verarbeitung zu blockieren
 volatile bool isProcessing = false;
 
+// Callback-Funktion für ESP-NOW-Sendebestätigung
+void onDataSent(uint8_t *mac_addr, uint8_t status) {
+  //#ifdef DEBUG
+  Serial.print("Sende-Status: ");
+  Serial.println(status == 0 ? "Erfolgreich" : "Fehlgeschlagen");
+
+  Serial.print("Ziel-MAC-Adresse: ");
+  for (int i = 0; i < 6; i++) {
+    Serial.print(mac_addr[i], HEX);
+    if (i < 5) {
+      Serial.print(":");
+    }
+  }
+  Serial.println();
+  //#endif
+}
+
 // Callback-Funktion für den Empfang von ESP-NOW-Daten
 void onDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len) {
   ReceivedDroneData receivedData;
   memcpy(&receivedData, incomingData, sizeof(receivedData));
-  #ifdef DEBUG
+  //#ifdef DEBUG
   Serial.print("Daten empfangen von: ");
   for (int i = 0; i < 6; i++) {
       Serial.printf("%02X", mac[i]);
       if (i < 5) Serial.print(":");
   }
   Serial.printf(" | Gerätename: %s | RSSI: %d | Counter: %d\n", receivedData.deviceName, receivedData.rssi, receivedData.count);
-  #endif
+  //#endif
   // Drohne zu den Daten hinzufügen oder aktualisieren
   storeDroneData(receivedData);
-
 }
 
 // Funktion zum Erstellen des JSON-Dokuments für die Drohnendaten
@@ -712,9 +742,10 @@ void handleSaveConfig() {
 // Funktion zur Initialisierung des WLAN-AP und des Webservers
 void setupWiFiAndServer() {
 
+  WiFi.mode(WIFI_AP_STA); // Ermöglicht AP und Station gleichzeitig
   // AP-Modus starten
-  WiFi.softAP(ssid, password);
-  Serial.println("Access Point gestartet");
+  WiFi.softAP(ssid, password, CHANNEL);
+  Serial.println("Access Point gestartet auf");
 
   // Eigene MAC-Adresse anzeigen
   Serial.print("MAC-Adresse: ");
@@ -723,6 +754,16 @@ void setupWiFiAndServer() {
   // IP-Adresse des Access Points ausgeben
   Serial.print("IP-Adresse: ");
   Serial.println(WiFi.softAPIP());
+
+  
+  if (int32_t n = WiFi.scanNetworks()) {
+      for (uint8_t i=0; i<n; i++) {
+          if (!strcmp(ssid, WiFi.SSID(i).c_str())) {
+              CHANNEL = WiFi.channel(i); } } }
+
+  wifi_set_channel(CHANNEL);
+  Serial.print("CHANNEL: ");
+  Serial.println(CHANNEL);
 
   // Webserver-Routen
   server.on("/", []() {
@@ -751,6 +792,19 @@ void setupWiFiAndServer() {
 
 }
 
+void initESPNow() {
+  if (esp_now_init() != 0) {   // Ersetzen Sie ESP_OK durch 0
+    Serial.println("Fehler bei der Initialisierung von ESP-NOW");
+    return;
+  }
+
+  esp_now_register_recv_cb(onDataRecv);
+  esp_now_register_send_cb(onDataSent);
+  esp_now_add_peer((uint8_t*)senderIDs[0], ESP_NOW_ROLE_COMBO, CHANNEL, NULL, 0);
+  esp_now_add_peer((uint8_t*)senderIDs[1], ESP_NOW_ROLE_COMBO, CHANNEL, NULL, 0);
+  esp_now_add_peer((uint8_t*)senderIDs[2], ESP_NOW_ROLE_COMBO, CHANNEL, NULL, 0);
+  Serial.println("ESP-NOW erfolgreich initialisiert und bereit für Senden und Empfangen.");
+}
 
 void setup() {
   Serial.begin(115200);
@@ -766,15 +820,7 @@ void setup() {
   // WLAN und Webserver einrichten
   setupWiFiAndServer();
 
-  // ESP-NOW initialisieren
-  if (esp_now_init() != 0) {
-    Serial.println("Fehler bei der Initialisierung von ESP-NOW");
-    return;
-  }
-
-  // Callback für empfangene Daten registrieren
-  esp_now_set_self_role(ESP_NOW_ROLE_SLAVE);
-  esp_now_register_recv_cb(onDataRecv);
+  initESPNow();
 
   Serial.println("Warte auf ESP-NOW-Nachrichten...");
 
@@ -783,10 +829,20 @@ void setup() {
 void loop() {
   // ESP-NOW arbeitet mit Callback, daher keine Logik im Haupt-Loop nötig
   server.handleClient(); // Clientanfragen bearbeiten
+    // Überprüfen, ob das Intervall abgelaufen ist
   elapsedMillis = millis();
-  if (elapsedMillis - previousMillis >= (long)RESETINTERVAL) {
-      previousMillis = elapsedMillis;
+  if ((unsigned long)(elapsedMillis - previousMillis) >= (unsigned long)RESETINTERVAL) {
+    // Nächsten Sender bestimmen
+    currentSenderIndex = (currentSenderIndex + 1) % (sizeof(senderIDs) / sizeof(senderIDs[0]));
+    previousMillis = elapsedMillis;
+    
+    // Token an aktuellen Sender senden
+    // Casten Sie `senderIDs[currentSenderIndex]` und "SEND" zu `u8*`
+    char message[] = "SEND"; // Dies ist ein char-Array, das die Größe des Strings enthält
+    int result = esp_now_send((uint8_t*)senderIDs[currentSenderIndex], (uint8_t *)message, sizeof(message) - 1); 
+    Serial.println("esp_now_send " + String(result));
+    Serial.print("Sender ");
+    Serial.print(currentSenderIndex);
+    Serial.println(" darf jetzt senden.");
   }
-
-
 }
