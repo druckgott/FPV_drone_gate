@@ -23,7 +23,6 @@ int currentSenderIndex = 0;  // Aktueller Sender
 unsigned long interval = 200; // Zeitintervall für jeden Sender
 unsigned long lastSwitchTime = 0;
 
-
 #define MAX_DRONES 10  // Maximalanzahl an Drohnen, die gespeichert werden können
 #define MAX_VALUES 3   // Maximalanzahl der RSSI und Counter-Werte pro Drohne
 
@@ -175,16 +174,6 @@ void setAllLEDs(uint32_t color, uint8_t brightness) {
     strip.show(); // Aktualisiert die LEDs, damit die Farbe und Helligkeit angezeigt werden
 }
 
-// Funktion zur Berechnung, ob eine Drohne innerhalb des Bereichs ist
-/*bool calculateIsInside(int rssiValues[]) {
-  for (int i = 0; i < MAX_VALUES; i++) {
-    if (rssiValues[i] < THRESHOLD_RSSI || rssiValues[i] >= 0) {
-      return false;  // Außerhalb des Bereichs
-    }
-  }
-  return true; // Innerhalb des Bereichs
-}*/
-
 // Funktion zur Berechnung des Mittelwerts der RSSI-Werte einer Drohne
 float calculateAverageRSSI(int rssi[MAX_VALUES]) {
   int validCount = 0;
@@ -199,21 +188,6 @@ float calculateAverageRSSI(int rssi[MAX_VALUES]) {
 
   return (validCount > 0) ? sum / validCount : 0;
 }
-
-// Funktion zur Identifizierung der Drohne mit dem niedrigsten RSSI-Mittelwert
-/*void findClosestDrone(int &closestIndex, float &minAverage) {
-  minAverage = -200; // Startwert für minAverage, da RSSI negativ ist
-  closestIndex = -1;
-
-  for (int i = 0; i < droneCount; i++) {
-    float avgRSSI = calculateAverageRSSI(drones[i].rssi);
-    
-    if (avgRSSI > minAverage && avgRSSI < 0) {
-      minAverage = avgRSSI;
-      closestIndex = i;
-    }
-  }
-}*/
 
 void updateLEDBasedOnRSSI(int closestDroneID, int closestRSSI) {
   if (closestDroneID >= 0 && closestDroneID < 10) {
@@ -281,21 +255,6 @@ void storeDroneData(ReceivedDroneData receivedData) {
   else if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_02") == 0) index = 1;
   else if (strcmp(&receivedData.deviceName[strlen(receivedData.deviceName) - 3], "_03") == 0) index = 2;
 
-      // Extrahiere den Suffix von deviceName
-  /*const char* suffix = &receivedData.deviceName[strlen(receivedData.deviceName) - 3];
-
-    // Prüfen, ob der empfangene Suffix mit dem aktuellen Index übereinstimmt
-  if (strcmp(suffix, "_01") == 0 && currentIndex == 0) {
-      currentIndex = 1; // Nächster ESP zur Abfrage ist _02
-      index = 0;
-  } else if (strcmp(suffix, "_02") == 0 && currentIndex == 1) {
-      currentIndex = 2; // Nächster ESP zur Abfrage ist _03
-      index = 1;
-  } else if (strcmp(suffix, "_03") == 0 && currentIndex == 2) {
-      currentIndex = 0; // Nächster ESP zur Abfrage ist _01
-      index = 2;
-  }*/
-  //printElapsedTime("Index: " + String(index));
   // Wenn das Suffix nicht gefunden wurde, abbrechen
   if (index == -1) return;
 
@@ -381,9 +340,6 @@ void storeDroneData(ReceivedDroneData receivedData) {
   //printElapsedTime("Ende first drone loop");
 
 }
-
-// Flag, um die Verarbeitung zu blockieren
-volatile bool isProcessing = false;
 
 // Callback-Funktion für ESP-NOW-Sendebestätigung
 void onDataSent(uint8_t *mac_addr, uint8_t status) {
@@ -806,20 +762,21 @@ void initESPNow() {
   Serial.println("ESP-NOW erfolgreich initialisiert und bereit für Senden und Empfangen.");
 }
 
+void startLed() {
+  strip.begin(); // NeoPixel initialisieren
+  strip.setBrightness(BRIGHTNESS);
+  strip.show(); // Sicherstellen, dass die LEDs zu Beginn ausgeschaltet sind
+}
+
 void setup() {
   Serial.begin(115200);
   delay(6000);
   Serial.println("");
 
   loadConfigFromEEPROM(); // Lade gespeicherte Konfiguration
-
-  strip.begin(); // NeoPixel initialisieren
-  strip.setBrightness(BRIGHTNESS);
-  strip.show(); // Sicherstellen, dass die LEDs zu Beginn ausgeschaltet sind
-
+  startLed();
   // WLAN und Webserver einrichten
   setupWiFiAndServer();
-
   initESPNow();
 
   Serial.println("Warte auf ESP-NOW-Nachrichten...");
