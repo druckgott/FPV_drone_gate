@@ -32,6 +32,14 @@ typedef struct {
 DroneData droneData;
 int count = 0; // Zählervariable
 
+bool canSend = false;
+
+void onDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+  if (len == 4 && memcmp(incomingData, "SEND", 4) == 0) {
+    canSend = true;
+  }
+}
+
 // Callback-Funktion für ESP-NOW-Sendebestätigung
 void onSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   #ifdef DEBUG
@@ -139,14 +147,10 @@ void setup() {
   pBLEScan->setWindow(32);        // Scan-Fenster in 0.625ms-Einheiten
 }
 
-void loop() {
-
-  // Überprüfe die WiFi-Verbindung
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Verbindung verloren. Versuche, erneut zu verbinden...");
-    connectToWiFi(); // WiFi erneut verbinden
-  }
-  // Zähler hochzählen
+// Beispiel-Funktion zum Senden der Daten
+void sendESPNowData() {
+  // Implementieren Sie hier, welche Daten gesendet werden sollen
+    // Zähler hochzählen
   count++;
   if (count > 10000) {
     count = 0; // Zähler zurücksetzen
@@ -156,4 +160,23 @@ void loop() {
   BLEDevice::getScan()->start(0.1, true); // kurzer Scan, um wiederholte Ergebnisse zu ermöglichen
 
   BLEDevice::getScan()->clearResults();    // Bereinige die Ergebnisse sofort für den nächsten Scan
+  //Serial.println("Daten werden gesendet...");
+}
+
+void loop() {
+
+  // Überprüfe die WiFi-Verbindung
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Verbindung verloren. Versuche, erneut zu verbinden...");
+    connectToWiFi(); // WiFi erneut verbinden
+  }
+
+  if (canSend) {
+    // Daten senden
+    sendESPNowData();
+    // Senden deaktivieren, bis der Server wieder ein „SEND“-Signal sendet
+    canSend = false;
+  }
+
+
 }

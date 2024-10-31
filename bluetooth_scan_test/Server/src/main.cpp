@@ -10,6 +10,16 @@
 const char* ssid = "LED_GATE_SERVER_01";           // SSID des Access Points
 const char* password = "12345678";                  // Passwort des Access Points
 
+const uint8_t senderIDs[][6] = {
+  {0x24, 0x0A, 0xC4, 0x11, 0x5B, 0x00}, // Beispiel: MAC-Adresse von Sender 1
+  {0x24, 0x0A, 0xC4, 0x11, 0x5B, 0x01}, // Beispiel: MAC-Adresse von Sender 2
+  // Fügen Sie weitere Sender-MAC-Adressen hinzu
+};
+
+int currentSenderIndex = 0;  // Aktueller Sender
+unsigned long interval = 50; // Zeitintervall für jeden Sender
+unsigned long lastSwitchTime = 0;
+
 #define MAX_DRONES 10  // Maximalanzahl an Drohnen, die gespeichert werden können
 #define MAX_VALUES 3   // Maximalanzahl der RSSI und Counter-Werte pro Drohne
 
@@ -385,7 +395,6 @@ void onDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len) {
   #endif
   // Drohne zu den Daten hinzufügen oder aktualisieren
   storeDroneData(receivedData);
-
 }
 
 // Funktion zum Erstellen des JSON-Dokuments für die Drohnendaten
@@ -784,9 +793,25 @@ void loop() {
   // ESP-NOW arbeitet mit Callback, daher keine Logik im Haupt-Loop nötig
   server.handleClient(); // Clientanfragen bearbeiten
   elapsedMillis = millis();
-  if (elapsedMillis - previousMillis >= (long)RESETINTERVAL) {
+  if ((unsigned long)(elapsedMillis - previousMillis) >= (unsigned long)RESETINTERVAL) {
       previousMillis = elapsedMillis;
   }
+
+    // Überprüfen, ob das Intervall abgelaufen ist
+  unsigned long now = millis();
+  if (now - lastSwitchTime >= interval) {
+    // Nächsten Sender bestimmen
+    currentSenderIndex = (currentSenderIndex + 1) % (sizeof(senderIDs) / sizeof(senderIDs[0]));
+    lastSwitchTime = now;
+    
+    // Token an aktuellen Sender senden
+    // Casten Sie `senderIDs[currentSenderIndex]` und "SEND" zu `u8*`
+    esp_now_send((u8*)senderIDs[currentSenderIndex], (u8*)"SEND", 4);
+    Serial.print("Sender ");
+    Serial.print(currentSenderIndex);
+    Serial.println(" darf jetzt senden.");
+  }
+
 
 
 }
