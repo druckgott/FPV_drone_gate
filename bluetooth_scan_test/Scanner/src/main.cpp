@@ -18,7 +18,8 @@ const char* password = "12345678";                  // Passwort des Access Point
 //uint8_t broadcastAddress[] = {0x4A, 0x3F, 0xDA, 0x7E, 0x58, 0x9F};
 //ESP8266 von Leadgate mit 18650
 //EE:FA:BC:12:C7:4F
-uint8_t broadcastAddress[] = {0xEE, 0xFA, 0xBC, 0x12, 0xC7, 0x4F};
+//uint8_t broadcastAddress[] = {0xEE, 0xFA, 0xBC, 0x12, 0xC7, 0x4F};
+uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // Broadcast-Adresse
 
 typedef struct {
   char deviceName[32];
@@ -108,12 +109,14 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
 };
 
 void connectToWiFi() {
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Verbinde mit dem Access Point...");
-  }
-  Serial.println("Verbunden mit dem Access Point");
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  //WiFi.begin(ssid, password);
+  //while (WiFi.status() != WL_CONNECTED) {
+  //  delay(1000);
+  //  Serial.println("Verbinde mit dem Access Point...");
+  //}
+  //Serial.println("Verbunden mit dem Access Point");
 }
 
 
@@ -131,13 +134,12 @@ void setup() {
   //WiFi.macAddress(esp32MacAddress);
 
   // ESP-NOW initialisieren
-  WiFi.mode(WIFI_STA);
   initESPNow();
 
   // Empfänger hinzufügen
   esp_now_peer_info_t peerInfo;
-  memcpy(peerInfo.peer_addr, broadcastAddress, 0);
-  peerInfo.channel = 0;  
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 1;  
   peerInfo.encrypt = NULL;
 
   if (esp_now_add_peer(&peerInfo) != ESP_OK) {
@@ -177,10 +179,10 @@ void sendESPNowData() {
 void loop() {
 
   // Überprüfe die WiFi-Verbindung
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Verbindung verloren. Versuche, erneut zu verbinden...");
-    connectToWiFi(); // WiFi erneut verbinden
-  }
+  //if (WiFi.status() != WL_CONNECTED) {
+  //  Serial.println("Verbindung verloren. Versuche, erneut zu verbinden...");
+  //  connectToWiFi(); // WiFi erneut verbinden
+  //}
   if (canSend) {
     Serial.println("Darf senden... ");
     // Daten senden

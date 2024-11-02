@@ -12,7 +12,9 @@ const char* ssid = "LED_GATE_SERVER_01";           // SSID des Access Points
 const char* password = "12345678";                  // Passwort des Access Points
 int CHANNEL = 1;
 
-const uint8_t senderIDs[][6] = {
+//uint8_t broadcastAddress[] = {0x3C, 0x84, 0x27, 0xAF, 0x19, 0x48}; // ESP32 MAC
+
+uint8_t broadcastAddress[][6] = {
   {0x3C, 0x84, 0x27, 0xAF, 0x19, 0x48}, // 3C:84:27:AF:19:48 von Sender 1
   {0xD8, 0x3B, 0xDA, 0x34, 0xAE, 0x20}, // D8:3B:DA:34:AE:20 von Sender 2
   {0xD8, 0x3B, 0xDA, 0x32, 0x0C, 0xC0}, // D8:3B:DA:32:0C:C0 von Sender 3
@@ -52,6 +54,16 @@ typedef struct {
   int rssi;             // RSSI-Wert
   int count;            // Counter für Drohnen
 } ReceivedDroneData;
+
+typedef struct struct_message {
+  char msg[50];
+} struct_message;
+
+// Create a struct_message called outgoingReadings to hold outgoing data
+struct_message outgoingReadings;
+
+// Variable to store if sending data was successful
+String success;
 
 int closest_drone_index = -1;
 int closest_RSSI = 31;
@@ -280,8 +292,9 @@ void storeDroneData(ReceivedDroneData receivedData) {
       //Farbe ändern wenn die näheste Drone innerhalb des Rings ist
       if (drones[i].isInside && closestDroneIndex != -1) {
         current_drone_color = String(drones[closestDroneIndex].deviceName).substring(6).toInt();
+        //dieses IF geht noch nicht warum ist gearde noch unklar
       }else if (ledWhenNoDrone) {
-        setAllLEDs(strip.Color(255, 255, 255), BRIGHTNESS);
+        //setAllLEDs(strip.Color(255, 255, 255), BRIGHTNESS);
       }
       //printElapsedTime("Update Farbe Led beendet");
       #ifdef DEBUG
@@ -325,7 +338,8 @@ void storeDroneData(ReceivedDroneData receivedData) {
     if (drones[droneCount].isInside && closestDroneIndex != -1) {
       current_drone_color = String(drones[closestDroneIndex].deviceName).substring(6).toInt();
     }else if (ledWhenNoDrone) {
-      setAllLEDs(strip.Color(255, 255, 255), BRIGHTNESS);
+      //dieses IF geht noch nicht warum ist gearde noch unklar
+      //setAllLEDs(strip.Color(255, 255, 255), BRIGHTNESS);
     }
     #ifdef DEBUG
     Serial.print("Die nächste Drohne ist: ");
@@ -341,36 +355,22 @@ void storeDroneData(ReceivedDroneData receivedData) {
 
 }
 
-// Callback-Funktion für ESP-NOW-Sendebestätigung
-void onDataSent(uint8_t *mac_addr, uint8_t status) {
-  //#ifdef DEBUG
-  Serial.print("Sende-Status: ");
-  Serial.println(status == 0 ? "Erfolgreich" : "Fehlgeschlagen");
-
-  Serial.print("Ziel-MAC-Adresse: ");
-  for (int i = 0; i < 6; i++) {
-    Serial.print(mac_addr[i], HEX);
-    if (i < 5) {
-      Serial.print(":");
-    }
-  }
-  Serial.println();
-  //#endif
+// Callback when data is sent
+void OnDataSent(uint8_t *mac_addr, uint8_t sendStatus) {
+  #if DEBUG
+  Serial.println(sendStatus == 0 ? "Delivery Success" : "Delivery Fail");
+  #endif
+  //eine Zeile muss drin bleiben sonst funktioniert es nicht
+  (void)mac_addr;
 }
 
-// Callback-Funktion für den Empfang von ESP-NOW-Daten
-void onDataRecv(uint8_t *mac, uint8_t *incomingData, uint8_t len) {
+// Callback when data is received
+void OnDataRecv(uint8_t * mac, uint8_t *incomingData, uint8_t len) {
   ReceivedDroneData receivedData;
   memcpy(&receivedData, incomingData, sizeof(receivedData));
-  //#ifdef DEBUG
-  Serial.print("Daten empfangen von: ");
-  for (int i = 0; i < 6; i++) {
-      Serial.printf("%02X", mac[i]);
-      if (i < 5) Serial.print(":");
-  }
+  #if DEBUG
   Serial.printf(" | Gerätename: %s | RSSI: %d | Counter: %d\n", receivedData.deviceName, receivedData.rssi, receivedData.count);
-  //#endif
-  // Drohne zu den Daten hinzufügen oder aktualisieren
+  #endif
   storeDroneData(receivedData);
 }
 
@@ -503,7 +503,7 @@ const char* htmlPage = R"rawl(
           tableBody.appendChild(row);
         });
       });
-  }, 10); // Aktualisiere alle 0.01 Sekunde
+  }, 100); // Aktualisiere alle 0.1 Sekunde
 </script>
 </head>
 <body>
@@ -698,19 +698,46 @@ void handleSaveConfig() {
 // Funktion zur Initialisierung des WLAN-AP und des Webservers
 void setupWiFiAndServer() {
 
+  // Set device as a Wi-Fi Station
   WiFi.mode(WIFI_AP_STA); // Ermöglicht AP und Station gleichzeitig
   WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  
   // AP-Modus starten
   WiFi.softAP(ssid, password);
-  Serial.println("Access Point gestartet auf");
 
-  // Eigene MAC-Adresse anzeigen
+  // MAC-Adresse ausgeben
   Serial.print("MAC-Adresse: ");
   Serial.println(WiFi.softAPmacAddress());
 
-  // IP-Adresse des Access Points ausgeben
+  // IP-Adresse ausgeben
   Serial.print("IP-Adresse: ");
   Serial.println(WiFi.softAPIP());
+
+  // WLAN-Kanal ausgeben
+  Serial.print("WLAN-Kanal: ");
+  Serial.println(WiFi.channel());
+
+  // Init ESP-NOW
+  if (esp_now_init() != 0) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+
+  // Set ESP-NOW Role
+  esp_now_set_self_role(ESP_NOW_ROLE_COMBO);
+
+  // Register peer
+  int numSenders = sizeof(broadcastAddress) / sizeof(broadcastAddress[0]); // Anzahl der Sender
+  for (int i = 0; i < numSenders; i++) {
+    esp_now_add_peer(broadcastAddress[i], ESP_NOW_ROLE_COMBO, CHANNEL, NULL, 0);
+  }
+
+  // Once ESPNow is successfully Init, we will register for Send CB to
+  // get the status of Trasnmitted packet
+  esp_now_register_send_cb(OnDataSent);
+
+  // Register for a callback function that will be called when data is received
+  esp_now_register_recv_cb(OnDataRecv);
 
   // Webserver-Routen
   server.on("/", []() {
@@ -739,20 +766,6 @@ void setupWiFiAndServer() {
 
 }
 
-void initESPNow() {
-  if (esp_now_init() != 0) {   // Ersetzen Sie ESP_OK durch 0
-    Serial.println("Fehler bei der Initialisierung von ESP-NOW");
-    return;
-  }
-
-  esp_now_register_recv_cb(onDataRecv);
-  esp_now_register_send_cb(onDataSent);
-  esp_now_add_peer((uint8_t*)senderIDs[0], ESP_NOW_ROLE_COMBO, CHANNEL, NULL, 0);
-  esp_now_add_peer((uint8_t*)senderIDs[1], ESP_NOW_ROLE_COMBO, CHANNEL, NULL, 0);
-  esp_now_add_peer((uint8_t*)senderIDs[2], ESP_NOW_ROLE_COMBO, CHANNEL, NULL, 0);
-  Serial.println("ESP-NOW erfolgreich initialisiert und bereit für Senden und Empfangen.");
-}
-
 void startLed() {
   strip.begin(); // NeoPixel initialisieren
   strip.setBrightness(BRIGHTNESS);
@@ -768,7 +781,6 @@ void setup() {
   startLed();
   // WLAN und Webserver einrichten
   setupWiFiAndServer();
-  initESPNow();
 
   Serial.println("Warte auf ESP-NOW-Nachrichten...");
 
@@ -780,17 +792,14 @@ void loop() {
     // Überprüfen, ob das Intervall abgelaufen ist
   elapsedMillis = millis();
   if ((unsigned long)(elapsedMillis - previousMillis) >= (unsigned long)RESETINTERVAL) {
+  //if ((unsigned long)(elapsedMillis - previousMillis) >= 1000) {
     // Nächsten Sender bestimmen
-    currentSenderIndex = (currentSenderIndex + 1) % (sizeof(senderIDs) / sizeof(senderIDs[0]));
+    currentSenderIndex = (currentSenderIndex + 1) % (sizeof(broadcastAddress) / sizeof(broadcastAddress[0]));
     previousMillis = elapsedMillis;
-    
-    // Token an aktuellen Sender senden
-    // Casten Sie `senderIDs[currentSenderIndex]` und "SEND" zu `u8*`
-    char message[] = "SEND"; // Dies ist ein char-Array, das die Größe des Strings enthält
-    int result = esp_now_send((uint8_t*)senderIDs[currentSenderIndex], (uint8_t *)message, sizeof(message) - 1); 
-    Serial.println("esp_now_send " + String(result));
-    Serial.print("Sender ");
-    Serial.print(currentSenderIndex);
-    Serial.println(" darf jetzt senden.");
+    // Erstellen Sie die vollständige Nachricht
+    char sendMsg[20]; // Puffer für die erwartete Nachricht, anpassen wenn nötig
+    snprintf(sendMsg, sizeof(sendMsg), "REQUEST_0%d", currentSenderIndex+1); // "REQUEST" + deviceSuffix
+    strcpy(outgoingReadings.msg, sendMsg);
+    esp_now_send(broadcastAddress[currentSenderIndex], (uint8_t *) &outgoingReadings, sizeof(outgoingReadings));
   }
 }
